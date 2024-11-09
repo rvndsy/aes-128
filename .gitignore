@@ -1,8 +1,8 @@
-main.c
-aes.cpp
-
-
 # Compiled binaries
+a.out
 aes
 main
 out
+
+# Unneeded stuff
+tmp/*

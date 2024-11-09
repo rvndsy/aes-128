@@ -1,4 +1,4 @@
-// Implementation of AES-256. Based on NIST FIPS-197.
+// Implementation of AES-128. Based on NIST FIPS-197.
 #include <stdint.h>
 #include <stdio.h>
 
