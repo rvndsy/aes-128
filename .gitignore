@@ -6,3 +6,11 @@ out
 
 # Unneeded stuff
 tmp/*
+
+# CMake
+CMakeCache.txt
+CMakeFiles/*
+Makefile
+cmake_install.cmake
+
+build/*

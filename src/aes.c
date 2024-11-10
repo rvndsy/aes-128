@@ -1,14 +1,14 @@
 // Implementation of AES-128. Based on NIST FIPS-197.
 #include <stdint.h>
 #include <stdio.h>
-#include "include/definitions.h"
-#include "include/printutils.c"
+#include "definitions.h"
+#include "utils.h"
 
-#define NK 4
-#define NB 4
-#define NR 10
+#define NK 4    //Number of 32-bit columns for the key - 4 for AES-128, 6 for 192, 8 for 256
+#define NB 4    //Number of 32-bit columns for the state/block/text - always 4
+#define NR 10   //Number of rounds - 10 for AES-128, 12 for 192, 14 for 256
 
-byte sBox [16][16] = {
+byte sBox [16][16] = {  // x is vertical, y is horizontal
     {0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76}, 
     {0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0},
     {0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15},
@@ -41,27 +41,27 @@ word rcon[10] = {
 };
 
 //, NOTE:, Rework, later
-byte hexStrToHexNum(char * hexStr, int size) {
-    byte hex = 0x0;
-
-    for (int i = 0; hexStr[i] != '\0' && i < size; i++) {
-        if (hexStr[i] >= 'a' && hexStr[i] <= 'f') {
-            hex |= hexStr[i] - 'a' + 10;
-        } else if (hexStr[i] >= 'A' && hexStr[i] <= 'F') {
-            hex |= hexStr[i] - 'A' + 10;
-        } else if (hexStr[i] >= '0' && hexStr[i] <= '9') {
-            hex |= hexStr[i] - '0';
-        } else {
-            printf("Bad hex string given!\n");
-            return 0x0;
-        }
-        if (hexStr[i+1] != '\0' && i+1 != size) {
-            hex <<= 4;
-        }
-    }
-
-    return hex;
-}
+//byte hexStrToHexNum(char * hexStr, int size) {
+//    byte hex = 0x0;
+//
+//    for (int i = 0; hexStr[i] != '\0' && i < size; i++) {
+//        if (hexStr[i] >= 'a' && hexStr[i] <= 'f') {
+//            hex |= hexStr[i] - 'a' + 10;
+//        } else if (hexStr[i] >= 'A' && hexStr[i] <= 'F') {
+//            hex |= hexStr[i] - 'A' + 10;
+//        } else if (hexStr[i] >= '0' && hexStr[i] <= '9') {
+//            hex |= hexStr[i] - '0';
+//        } else {
+//            printf("Bad hex string given!\n");
+//            return 0x0;
+//        }
+//        if (hexStr[i+1] != '\0' && i+1 != size) {
+//            hex <<= 4;
+//        }
+//    }
+//
+//    return hex;
+//}
 
 //void cipher(byte in[4*NB], byte out[4*NB], byte word[NB*(NR+1)]) {
 //    AddRoundKey(in, w[0])
@@ -83,28 +83,44 @@ byte hexStrToHexNum(char * hexStr, int size) {
 //    //*word = *word & 0xf;
 //}
 
-word rotWord(word word) { //circular rotate left for size of 4
-    return (word << 1) | (word >> (32 - 1));
+word rotWord(word w) { //circular rotate left by 2 bytes
+    return (w << 8) | (w >> (32 - 8));
 }
 
-word subWord(word word) {
-    return sBox[(word & 0x0f) >> 4][word & 0xf0];
+word subBytes(byte b) {
+    return sBox[((b & 0xf0) >> 4)][(b & 0x0f)];
 }
 
-void keyExpansion(byte * key, word * w) {
+word subWord(word w) {
+    word out = 0x0;
+    out |= subBytes((byte)((w & 0xff000000) >> 24));
+    out <<= 8;
+    out |= subBytes((byte)((w & 0x00ff0000) >> 16));
+    out <<= 8;
+    out |= subBytes((byte)((w & 0x0000ff00) >> 8));
+    out <<= 8;
+    out |= subBytes((byte)(w & 0x000000ff));
+    return out;
+}
+
+void keyExpansion(const byte * key, word * w) {
     int i = 0;
     while (i <= NK - 1) {
-        w[i] &= key[4*i] << 4;
-        w[i] &= key[4*i+1] << 4;
-        w[i] &= key[4*i+2] << 4;
-        w[i] &= key[4*i+3];
+        w[i] = 0x0;
+        w[i] |= key[4*i];
+        w[i] <<= 8;
+        w[i] |= (word)key[4*i+1];
+        w[i] <<= 8;
+        w[i] |= (word)key[4*i+2];
+        w[i] <<= 8;
+        w[i] |= (word)key[4*i+3];
         i++;
     }
     word tmp;
-    while (i < 4 * NR + 3) {
+    while (i <= 4 * NR + 3) {
         tmp = w[i-1];
         if (i % NK == 0) {
-            tmp = subWord(rotWord(tmp)) ^ rcon[i/NK];
+            tmp = subWord(rotWord(tmp)) ^ rcon[i/NK-1];
         } else if (NK > 6 && i % NK == 4) {
             tmp = subWord(tmp);
         }
@@ -115,32 +131,38 @@ void keyExpansion(byte * key, word * w) {
 
 int main(int argc, char** argv)  {
     byte txt[16], key[16];
-    word * roundKeys[NR+1];
+    word roundKeys[NR*4+1];
 
     int nk = NK;
     int nb = NB;
     int nr = NR;
 
-    if (argc < 3 || argc > 3) {
+    if (argc < 3) {
         printf("aes: Too few arguments provided\n");
-        return 0;
+        return 1;
     } else if (argc > 3) {
         printf("aes: Too many arguments provided\n");
-        return 0;
+        return 1;
     }
 
     char tmp[2];
     for (int i = 0; i < 16; i++) {
         tmp[0] = argv[1][i*2];
         tmp[1] = argv[1][i*2+1];
-        txt[i] = hexStrToHexNum(tmp, 2);
+        txt[i] = strToHexByte(tmp);
 
         tmp[0] = argv[2][i*2];
         tmp[1] = argv[2][i*2+1];
-        key[i] = hexStrToHexNum(tmp, 2);
+        key[i] = strToHexByte(tmp);
     }
 
-    keyExpansion(key, *roundKeys);
+    keyExpansion(key, roundKeys);
+    for (int i = 0; i <= 4*NR+3; i++) {
+        printf("%d - ", i);
+        printWordHex(roundKeys[i]);
+        println();
+    }
+    println();
 
     printf("Plaintext\n");
     printByteArray(txt, 16);
