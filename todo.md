@@ -1,9 +1,9 @@
 ## TO-DO list
 
 1. ~~Generate keys for every round~~
-2. Add round key
+2. ~~Add round key~~
 3. Encrypt functions:
-    - Substitute bytes
+    - ~~Substitute bytes~~
     - Shift rows
     - Mix columns
 4. Encryption for all 10(?) rounds

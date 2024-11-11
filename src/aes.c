@@ -7,6 +7,9 @@
 #define NK 4    //Number of 32-bit columns for the key - 4 for AES-128, 6 for 192, 8 for 256
 #define NB 4    //Number of 32-bit columns for the state/block/text - always 4
 #define NR 10   //Number of rounds - 10 for AES-128, 12 for 192, 14 for 256
+#define KEY_SIZE 16
+#define TXT_SIZE 16
+#define EXPANDED_KEY_BYTE_COUNT 4*4*(NR+1)
 
 byte sBox [256] = {  // x is vertical, y is horizontal
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76, 
@@ -27,145 +30,80 @@ byte sBox [256] = {  // x is vertical, y is horizontal
     0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16,
 };
 
-word rcon[10] = {
-    0x01000000,
-    0x02000000,
-    0x04000000,
-    0x08000000,
-    0x10000000,
-    0x20000000,
-    0x40000000,
-    0x80000000,
-    0x1b000000,
-    0x36000000
-};
-
-//, NOTE:, Rework, later
-//byte hexStrToHexNum(char * hexStr, int size) {
-//    byte hex = 0x0;
-//
-//    for (int i = 0; hexStr[i] != '\0' && i < size; i++) {
-//        if (hexStr[i] >= 'a' && hexStr[i] <= 'f') {
-//            hex |= hexStr[i] - 'a' + 10;
-//        } else if (hexStr[i] >= 'A' && hexStr[i] <= 'F') {
-//            hex |= hexStr[i] - 'A' + 10;
-//        } else if (hexStr[i] >= '0' && hexStr[i] <= '9') {
-//            hex |= hexStr[i] - '0';
-//        } else {
-//            printf("Bad hex string given!\n");
-//            return 0x0;
-//        }
-//        if (hexStr[i+1] != '\0' && i+1 != size) {
-//            hex <<= 4;
-//        }
-//    }
-//
-//    return hex;
-//}
-
-//void cipher(byte in[4*NB], byte out[4*NB], byte word[NB*(NR+1)]) {
-//    AddRoundKey(in, w[0])
-//}
-
-
-// void ROTL4(int n, uint8_t * k4) { //circular rotate left for size of 4
-//     *k4 = (*k4 << n) | (*k4 >> (4 - n));
-//     *k4 = *k4 & 0xf;
-// }
-// 
-// void ROTR4(int n, uint8_t * k4) { //circular rotate right for size of 4
-//     *k4 = (*k4 >> n) | (*k4 << (4 - n));
-//     *k4 = *k4 & 0xf;
-// }
-
-//void rotWord(word * word) { //circular rotate left for size of 4
-//    *word = (*word << 1) | (*word >> (32 - 1));
-//    //*word = *word & 0xf;
-//}
+byte rcon[10] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36 };
 
 word rotWord(word w) { //circular rotate left by 2 bytes
     return (w << 8) | (w >> (32 - 8));
 }
 
-word subBytes(byte b) {
-    // return sBox[((b & 0xf0) >> 4)][(b & 0x0f)]; //for sBox[16][16]
-    return sBox[b]; //for sBox[256]
+void subBytes(byte * b) {
+    for (uint8_t i = 0; i < 16; i++) {
+        b[i] = sBox[b[i]];
+    }
 }
 
-word subWord(word w) {
-    word out = 0x0;
-    //for (uint8_t i = 0; i <= 24; i+=8) {
-    //    out |= subBytes((byte)((w & (0xff000000 >> i)) >> (24-i)));
-    //    if (i != 24) out <<= 8;
-    //}
-    
-    //The non-looped version should be faster:
-    out |= subBytes((byte)((w & 0xff000000) >> 24));
-    out <<= 8;
-    out |= subBytes((byte)((w & 0x00ff0000) >> 16));
-    out <<= 8;
-    out |= subBytes((byte)((w & 0x0000ff00) >> 8));
-    out <<= 8;
-    out |= subBytes((byte)(w & 0x000000ff));
-    return out;
+void shiftRows(byte * b) {
+    for (uint8_t i = 1; i < 4; i++) {
+        for (uint8_t j = 0; j < 4; j++) {
+            // byte tmp = b[i*4];
+        }
+    }
 }
 
-void keyExpansion(const byte * key, word * w) {
+void keyExpansion(const byte * key, byte * expandedKey) {
     int i = 0;
     while (i <= NK - 1) {
-        w[i] = 0x0;
-        w[i] |= key[4*i];
-        w[i] <<= 8;
-        w[i] |= (word)key[4*i+1];
-        w[i] <<= 8;
-        w[i] |= (word)key[4*i+2];
-        w[i] <<= 8;
-        w[i] |= (word)key[4*i+3];
+        expandedKey[4*i] = key[4*i];
+        expandedKey[4*i+1] = key[4*i+1];
+        expandedKey[4*i+2] = key[4*i+2];
+        expandedKey[4*i+3] = key[4*i+3];
+        //printf("%d - ", i);
+        //printByteArray(&expandedKey[4*i], 4);
+        //println();
         i++;
     }
-    word tmp;
+    byte tmp[4];
     while (i <= 4 * NR + 3) {
-        tmp = w[i-1];
+        tmp[0] = expandedKey[4*(i-1)];
+        tmp[1] = expandedKey[4*(i-1)+1];
+        tmp[2] = expandedKey[4*(i-1)+2];
+        tmp[3] = expandedKey[4*(i-1)+3];
         if (i % NK == 0) {
-            tmp = subWord(rotWord(tmp)) ^ rcon[i/NK-1]; //rcon index requires -1 - not in fips
-        } else if (NK > 6 && i % NK == 4) {
-            tmp = subWord(tmp);
+            byte tmp0 = tmp[0];
+            tmp[0] = sBox[tmp[1]] ^ rcon[i/NK-1]; //rcon index requires -1 - not in fips
+            tmp[1] = sBox[tmp[2]];
+            tmp[2] = sBox[tmp[3]];
+            tmp[3] = sBox[tmp0];
+        } else if (NK > 6 && i % NK == 4) { //for AES-256
+            tmp[0] = sBox[tmp[0]];
+            tmp[1] = sBox[tmp[1]];
+            tmp[2] = sBox[tmp[2]];
+            tmp[3] = sBox[tmp[3]];
         }
-        w[i] = w[i-NK] ^ tmp;
+        expandedKey[4*i] = expandedKey[(i-NK)*4] ^ tmp[0];
+        expandedKey[4*i+1] = expandedKey[(i-NK)*4+1] ^ tmp[1];
+        expandedKey[4*i+2] = expandedKey[(i-NK)*4+2] ^ tmp[2];
+        expandedKey[4*i+3] = expandedKey[(i-NK)*4+3] ^ tmp[3];
+        //printf("%d - %d - ", i, 4*i+3);
+        //printByteArray(&expandedKey[4*i], 4);
+        //println();
         i++;
     }
 }
 
-void addRoundKey(word roundKey[4], byte * txt) {
+void addRoundKey(byte roundKey[16], byte * txt) {
     for (uint8_t i = 0; i < 16; i++) {
-        printWordHex(0xff000000 >> (8*(i%4)));
-        println();
-        printWordHex(roundKey[i/4]);
-        println();
-        printWordHex(((0xff000000 >> (8*(i%4))) & roundKey[i/4]) >> (24-8*(i%4)));
-        println();
-        printWordHex(txt[4*(i%4)+i/4]);
-        println();
-        printWordHex(txt[4*(i%4)+i/4] ^ (((0xff000000 >> (8*(i%4))) & roundKey[i/4]) >> (24-8*(i%4))));
-        println();
-        println();
         txt[i] ^= roundKey[i];
-        txt[4*(i%4)+i/4] ^= ((0xff000000 >> (8*(i%4))) & roundKey[i%4]) >> (24-8*(i%4));
-
-        // 0 4 8  12
-        // 1 5 9  13
-        // 2 6 10 14
-        // 3 7 11 15
     }
 }
 
 int main(int argc, char** argv)  {
-    byte txt[16], key[16];
-    word expandedKey[NR*4+1];
-
     int nk = NK;
     int nb = NB;
     int nr = NR;
+
+    byte state[TXT_SIZE], key[KEY_SIZE], expandedKey[EXPANDED_KEY_BYTE_COUNT];
+    //word expandedKey[NR*4+1];
 
     if (argc < 3) {
         printf("aes: Too few arguments provided\n");
@@ -179,7 +117,7 @@ int main(int argc, char** argv)  {
     for (int i = 0; i < 16; i++) {
         tmp[0] = argv[1][i*2];
         tmp[1] = argv[1][i*2+1];
-        txt[i] = strToHexByte(tmp);
+        state[i] = strToHexByte(tmp);
 
         tmp[0] = argv[2][i*2];
         tmp[1] = argv[2][i*2+1];
@@ -194,20 +132,32 @@ int main(int argc, char** argv)  {
     //    println();
     //}
     //println();
-
-    printf("Plaintext\n");
-    printByteArray(txt, 16);
+    printf("Expanded Key: ");
+    printByteArray(expandedKey, EXPANDED_KEY_BYTE_COUNT);
     println();
 
-    word roundKey[4] = {expandedKey[0], expandedKey[1], expandedKey[2], expandedKey[3]};
-    addRoundKey(roundKey, txt);
+    // Initial add round key
+    addRoundKey(key, state);
 
-    printf("Plaintext\n");
-    printByteArray(txt, 16);
+    byte roundKey[16];
+    for (uint8_t i = 0; i < 16; i++) {
+        roundKey[i] = expandedKey[i];
+    }
+
+    printf("Key Addition: ");
+    printByteArray(state, TXT_SIZE);
     println();
 
-    printf("Key\n");
-    printByteArray(key, 16);
+    subBytes(state);
+
+    printf("Substitution: ");
+    printByteArray(state, TXT_SIZE);
+    println();
+
+    shiftRows(state);
+
+    printf("Shift Rows: ");
+    printByteArray(state, TXT_SIZE);
     println();
 
     return 0;
