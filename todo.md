@@ -1,6 +1,6 @@
 ## TO-DO list
 
-1. Generate keys for every round
+1. ~~Generate keys for every round~~
 2. Add round key
 3. Encrypt functions:
     - Substitute bytes
