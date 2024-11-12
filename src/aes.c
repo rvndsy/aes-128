@@ -30,11 +30,11 @@ byte sBox [256] = {  // x is vertical, y is horizontal
     0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16,
 };
 
-byte rcon[10] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36 };
+byte rcon[10] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36 }; // not using word datatype
 
-word rotWord(word w) { //circular rotate left by 2 bytes
-    return (w << 8) | (w >> (32 - 8));
-}
+// word rotWord(word w) { //circular rotate left by 2 bytes
+//     return (w << 8) | (w >> (32 - 8));
+// }
 
 void subBytes(byte * b) {
     for (uint8_t i = 0; i < 16; i++) {
@@ -43,9 +43,14 @@ void subBytes(byte * b) {
 }
 
 void shiftRows(byte * b) {
+    byte tmp0;
     for (uint8_t i = 1; i < 4; i++) {
-        for (uint8_t j = 0; j < 4; j++) {
-            // byte tmp = b[i*4];
+        for (uint8_t j = i; j > 0; j--) {
+            tmp0 = b[i];
+            b[i] = b[4+i];
+            b[4+i] = b[8+i];
+            b[8+i] = b[12+i];
+            b[12+i] = tmp0;
         }
     }
 }
