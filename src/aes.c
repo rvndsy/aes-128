@@ -102,8 +102,47 @@ void addRoundKey(byte roundKey[16], byte * txt) {
     }
 }
 
-void xTimes() {
+byte xTimes(byte a) { // TODO: definitely optimize the flag part
+    uint8_t flag = 0x0;
+    if ((a & 0x80) >> 7) flag = 0x1;
+    a <<= 1;
+    if (flag) a ^= 0x1b;
+    return a;
+}
 
+byte gf8Multiply(byte a, byte b) { // TODO: find a better way omg
+    printByteHex(a);
+    println();
+    printByteHex(b);
+    println();
+    if (b == 0x0) return 0x0; //the following if returns true for 0x0
+    if ((b & (b - 1)) == 0) {
+        printf("WTF\n");
+        while (b > 1) {
+            a = xTimes(a);
+            b >>= 1;
+        }
+    } else {
+        printf("Printing gf8 mult xor's:\n");
+        byte tmp, j, acpy = a;
+        for (int8_t i = 7; i >= 0; i--) { // uint8 would cause an infinite loop
+            if ((b >> i) & 1) {
+                j = 1 << i;
+                printf("j - ");
+                printByteHex(j);
+                println();
+                tmp = acpy;
+                while (j > 1) {
+                    tmp = xTimes(tmp);
+                    j >>= 1;
+                }
+                printByteHex(tmp);
+                println();
+                a ^= tmp;
+            }
+        }
+    }
+    return a;
 }
 
 void mixColumns(byte * b) {
@@ -182,6 +221,20 @@ int main(int argc, char** argv)  {
 
     printf("Mix Columns: ");
     printByteArray(state, TXT_SIZE);
+    println();
+
+    printf("Test: ");
+    printByteHex((0xff & 0x80) >> 7);
+    println();
+
+    printf("GF8 57 * 40: ");
+    printByteHex(gf8Multiply(0x57, 0x40));
+    println();
+    printf("GF8 57 * 02: ");
+    printByteHex(gf8Multiply(0x57, 0x02));
+    println();
+    printf("GF8 57 * 13: ");
+    printByteHex(gf8Multiply(0x57, 0x13));
     println();
 
     return 0;
