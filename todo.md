@@ -4,7 +4,7 @@
 2. ~~Add round key~~
 3. Encrypt functions:
     - ~~Substitute bytes~~
-    - Shift rows
+    - ~~Shift rows~~
     - Mix columns
 4. Encryption for all 10(?) rounds
 5. Decrypt functions:
