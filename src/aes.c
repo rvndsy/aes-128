@@ -1,8 +1,10 @@
 // Implementation of AES-128. Based on NIST FIPS-197.
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "definitions.h"
 #include "utils.h"
+#include "aes.h"
 
 #define NK 4    //Number of 32-bit columns for the key - 4 for AES-128, 6 for 192, 8 for 256
 #define NB 4    //Number of 32-bit columns for the state/block/text - always 4
@@ -11,7 +13,7 @@
 #define TXT_SIZE 16
 #define EXPANDED_KEY_BYTE_COUNT 4*4*(NR+1)
 
-const byte sBox [256] = {  // x is vertical, y is horizontal
+const byte sBox[256] = {  // x is vertical, y is horizontal
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76, 
     0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
     0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15,
@@ -96,9 +98,9 @@ void keyExpansion(const byte * key, byte * expandedKey) {
     }
 }
 
-void addRoundKey(byte roundKey[16], byte * txt) {
+void addRoundKey(byte roundKey[16], byte * state) {
     for (uint8_t i = 0; i < 16; i++) {
-        txt[i] ^= roundKey[i];
+        state[i] ^= roundKey[i];
     }
 }
 
@@ -106,52 +108,83 @@ byte xTimes(byte a) { // TODO: definitely optimize the flag part
     uint8_t flag = 0x0;
     if ((a & 0x80) >> 7) flag = 0x1;
     a <<= 1;
-    if (flag) a ^= 0x1b;
+    if (flag) a ^= 0x1b; //0x1b = 11011
     return a;
 }
 
-byte gf8Multiply(byte a, byte b) { // TODO: find a better way omg
-    printByteHex(a);
-    println();
-    printByteHex(b);
-    println();
-    if (b == 0x0) return 0x0; //the following if returns true for 0x0
-    if ((b & (b - 1)) == 0) {
-        printf("WTF\n");
-        while (b > 1) {
-            a = xTimes(a);
-            b >>= 1;
-        }
-    } else {
-        printf("Printing gf8 mult xor's:\n");
-        byte tmp, j, acpy = a;
-        for (int8_t i = 7; i >= 0; i--) { // uint8 would cause an infinite loop
-            if ((b >> i) & 1) {
-                j = 1 << i;
-                printf("j - ");
-                printByteHex(j);
-                println();
-                tmp = acpy;
-                while (j > 1) {
-                    tmp = xTimes(tmp);
-                    j >>= 1;
-                }
-                printByteHex(tmp);
-                println();
-                a ^= tmp;
-            }
-        }
+byte gf8Multiply(byte a, byte b) {
+    if (b == 0x0) return 0x0; //The following if returns 0x0 if b is 0x0, else a*0 would return a. 0*b should correctly return 0.
+    byte tmp = 0x0;
+    // At each step we check if b is all 0's (0 means nothing more to multiply)
+    while (b) {
+        if (b & 0x1) tmp ^= a;
+        // We execute xTimes(a) together with b >> 1, because by shifting b the least significant bit in b becomes the current power of 2 that xTimes(a) produces.
+        a = xTimes(a);
+        b >>= 1;
     }
-    return a;
+    return tmp;
 }
 
 void mixColumns(byte * b) {
+    byte tmp[4];
     for (uint8_t i = 0; i < 4; i++) {
-        b[0] = (0x2 * b[0]) ^ (0x3 * b[1]) ^ b[2] ^ b[3];
-        b[1] = b[0] ^ (0x2 * b[1]) ^ (0x3 * b[2]) ^ b[3];
-        b[2] = b[0] ^ b[1] ^ (0x2 * b[2]) ^ (0x3 * b[3]);
-        b[3] = (0x3 * b[0]) ^ b[1] ^ b[2] ^ (0x2 * b[3]);
+        tmp[0] = b[4*i];
+        tmp[1] = b[4*i+1];
+        tmp[2] = b[4*i+2];
+        tmp[3] = b[4*i+3];
+        b[4*i] =   gf8Multiply(0x2, tmp[0]) ^ gf8Multiply(0x3, tmp[1]) ^ tmp[2] ^ tmp[3];
+        b[4*i+1] = tmp[0] ^ gf8Multiply(0x2, tmp[1]) ^ gf8Multiply(0x3, tmp[2]) ^ tmp[3];
+        b[4*i+2] = tmp[0] ^ tmp[1] ^ gf8Multiply(0x2, tmp[2]) ^ gf8Multiply(0x3, tmp[3]);
+        b[4*i+3] = gf8Multiply(0x3, tmp[0]) ^ tmp[1] ^ tmp[2] ^ gf8Multiply(0x2, tmp[3]);
     }
+}
+
+// returns 0 if something went wrong    returns 1 if OK
+//
+// plainText - text to encrypt (64-bits)     key - the AES encrypt/decrypt key (see nk variable comment)
+// out - memory address to store encrypted plainText, to encrypt plainText
+// version (AES version): currently only 128
+int encrypt(byte * state, const byte * key, int version) {
+    // TODO: Add parameter checks
+    // TODO: Add failure checks - return 0
+    // TODO: Add functionality to avoid malloc for expandedKey or something?
+    uint8_t nr, nk, nb;
+    if (version == 128) {
+        nk = 4;    //Number of 32-bit columns for the key - 4 for AES-128, 6 for 192, 8 for 256
+        nb = 4;    //Number of 32-bit columns for the state/block/text - always 4
+        nr = 10;   //Number of rounds - 10 for AES-128, 12 for 192, 14 for 256
+    } else return 0;
+    byte * expandedKey = (byte*)malloc(sizeof(byte)*16*(nr+1));
+
+    //byte * state = (byte*)malloc(sizeof(byte)*nb*16);
+    //memcpy(state, plainText, sizeof(byte)*nb*16);
+
+    // Generating expanded key
+    keyExpansion(key, expandedKey);
+
+    // Initial add round key
+    addRoundKey(expandedKey, state);
+
+    // Encryption
+    for (uint8_t round = 1; round != NR; round++) {
+        subBytes(state);
+        shiftRows(state);
+        mixColumns(state);
+        addRoundKey(&expandedKey[16*round], state);
+
+        printf("%d Add round key (%d):\t", round, 16*round);
+        printByteArray(state, 16);
+        println();
+    }
+
+    // Final round without mixColumns
+    subBytes(state);
+    shiftRows(state);
+    addRoundKey(&expandedKey[EXPANDED_KEY_BYTE_COUNT-16], state);
+
+    free(expandedKey);
+
+    return 1;
 }
 
 int main(int argc, char** argv)  {
@@ -160,6 +193,7 @@ int main(int argc, char** argv)  {
     int nr = NR;
 
     byte state[TXT_SIZE], key[KEY_SIZE], expandedKey[EXPANDED_KEY_BYTE_COUNT];
+    byte * keyPtr = expandedKey;
     //word expandedKey[NR*4+1];
 
     if (argc < 3) {
@@ -170,71 +204,88 @@ int main(int argc, char** argv)  {
         return 1;
     }
 
+    // Reading key and plaintext
     char tmp[2];
     for (int i = 0; i < 16; i++) {
+        // Plaintext
         tmp[0] = argv[1][i*2];
         tmp[1] = argv[1][i*2+1];
         state[i] = strToHexByte(tmp);
 
+        // Key
         tmp[0] = argv[2][i*2];
         tmp[1] = argv[2][i*2+1];
         key[i] = strToHexByte(tmp);
     }
 
+    char textBlock[128] = "6BC1BEE22E409F96E93D7E117393172AAE2D8A571E03AC9C9EB76FAC45AF8E5130C81C46A35CE411E5FBC1191A0A52EFF69F2445DF4F9B17AD2B417BE66C3710";
+    byte * block = malloc(64*sizeof(byte));
+    byte * pBlock = block;
+
+    for (int i = 0; i < 64; i++) {
+        tmp[0] = textBlock[i*2];
+        tmp[1] = textBlock[i*2+1];
+        block[i] = strToHexByte(tmp);
+    }
+
+    encrypt(pBlock, key, 128);
+    pBlock += 16;
+    encrypt(pBlock, key, 128);
+    pBlock += 16;
+    encrypt(pBlock, key, 128);
+    pBlock += 16;
+    encrypt(pBlock, key, 128);
+
+    printByteArray(block, 64);
+
+    free(block);
+
+    return 0;
+
     keyExpansion(key, expandedKey);
-    // Key expansion debug:
-    //for (int i = 0; i <= 4*NR+3; i++) {
-    //    printf("%d - ", i);
-    //    printWordHex(expandedKey[i]);
-    //    println();
-    //}
-    //println();
+
     printf("Expanded Key: ");
     printByteArray(expandedKey, EXPANDED_KEY_BYTE_COUNT);
     println();
 
     // Initial add round key
-    addRoundKey(key, state);
+    addRoundKey(keyPtr, state);
 
-    byte roundKey[16];
-    for (uint8_t i = 0; i < 16; i++) {
-        roundKey[i] = expandedKey[i];
+    printf("Initial key add:");
+    printByteArray(state, 16);
+    println();
+
+    // Encryption
+    for (uint8_t round = 1; round != NR; round++) {
+        subBytes(state);
+        printf("%d Substitution: ", round);
+        printByteArray(state, TXT_SIZE);
+        println();
+
+        shiftRows(state);
+        printf("%d Shift Rows:\t", round);
+        printByteArray(state, TXT_SIZE);
+        println();
+
+        mixColumns(state);
+        printf("%d Mix Columns:\t", round);
+        printByteArray(state, TXT_SIZE);
+        println();
+
+        addRoundKey(&expandedKey[16*round], state);
+
+        printf("%d Add round key (%d):", round, 16*round);
+        printByteArray(state, 16);
+        println();
+        println();
     }
 
-    printf("Key Addition: ");
-    printByteArray(state, TXT_SIZE);
-    println();
-
     subBytes(state);
-
-    printf("Substitution: ");
-    printByteArray(state, TXT_SIZE);
-    println();
-
     shiftRows(state);
+    addRoundKey(&expandedKey[EXPANDED_KEY_BYTE_COUNT-16], state);
 
-    printf("Shift Rows: ");
+    printf("Encrypted:\t");
     printByteArray(state, TXT_SIZE);
-    println();
-
-    mixColumns(state);
-
-    printf("Mix Columns: ");
-    printByteArray(state, TXT_SIZE);
-    println();
-
-    printf("Test: ");
-    printByteHex((0xff & 0x80) >> 7);
-    println();
-
-    printf("GF8 57 * 40: ");
-    printByteHex(gf8Multiply(0x57, 0x40));
-    println();
-    printf("GF8 57 * 02: ");
-    printByteHex(gf8Multiply(0x57, 0x02));
-    println();
-    printf("GF8 57 * 13: ");
-    printByteHex(gf8Multiply(0x57, 0x13));
     println();
 
     return 0;

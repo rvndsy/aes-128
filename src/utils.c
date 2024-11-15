@@ -7,9 +7,16 @@ void printByteHex(byte b) { printf("%02x", b); }
 
 void printWordHex(word b) { printf("%08x", b); }
 
-void printByteArray(byte * arr, int size) {
+void printByteArray(const byte * arr, int size) {
     for (int i = 0; i < size; i++) {
-        printByteHex(arr[i]);
+        printf("%02x", arr[i]);
+    }
+}
+
+void printByteArrayPretty(const byte * arr, int size) {
+    for (int i = 0; i < size; i++) {
+        printf("%02x", arr[i]);
+        if (i % 4 == 3) printf(" ");
     }
 }
 

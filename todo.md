@@ -2,10 +2,10 @@
 
 1. ~~Generate keys for every round~~
 2. ~~Add round key~~
-3. Encrypt functions:
+3. ~~Encrypt functions:~~
     - ~~Substitute bytes~~
     - ~~Shift rows~~
-    - Mix columns
+    - ~~Mix columns~~
 4. Encryption for all 10(?) rounds
 5. Decrypt functions:
     - Inverse substitute bytes
