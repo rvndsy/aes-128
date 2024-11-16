@@ -1,6 +1,8 @@
 #include "utils.h"
 #include <stdio.h>
 
+#define PRETTY_ARRAY_SEPARATOR " "
+
 void println() { printf("\n"); }
 
 void printByteHex(byte b) { printf("%02x", b); }
@@ -16,7 +18,7 @@ void printByteArray(const byte * arr, int size) {
 void printByteArrayPretty(const byte * arr, int size) {
     for (int i = 0; i < size; i++) {
         printf("%02x", arr[i]);
-        if (i % 4 == 3) printf(" ");
+        if (i % 4 == 3) printf(PRETTY_ARRAY_SEPARATOR);
     }
 }
 
@@ -56,4 +58,26 @@ void convertStrToByteArray(const char * str, byte ** arr, int size) {
         tmp[1] = str[i*2+1];
         *arr[i] = strToHexByte(tmp);
     }
+}
+
+int compareByteArrays(const byte * a, const byte * b, int size) {
+    int mismatchCount = 0;
+
+    printByteArrayPretty(a, size);
+    printf("\n");
+
+    for (int i = 0; i < size; i++) {
+        if (a[i] != b[i]) {
+            printf("^^");
+            mismatchCount++;
+        } else {
+            printf("  ");
+        }
+        if (i % 4 == 3) printf(PRETTY_ARRAY_SEPARATOR);
+    }
+
+    printf("\n");
+    printByteArrayPretty(b, size);
+
+    return mismatchCount;
 }

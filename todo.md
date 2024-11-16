@@ -6,12 +6,20 @@
     - ~~Substitute bytes~~
     - ~~Shift rows~~
     - ~~Mix columns~~
-4. Encryption for all 10(?) rounds
-5. Decrypt functions:
-    - Inverse substitute bytes
-    - Inverse shift rows
-    - Inverse six columns
-6. Decryption for all 10(?) rounds
-7. File encryption
-8. CLI user interface/API for GUI
-9. GUI user interface
+4. ~~Encryption for all 10 rounds~~
+5. ~~Decrypt functions:~~
+    - ~~Inverse substitute bytes~~
+    - ~~Inverse shift rows~~
+    - ~~Inverse six columns~~
+6. ~~Decryption for all 10 rounds~~
+7. File encryption (at least CBC)
+    - CBC
+    - ...
+    - Counter (CTR) - doesn't have iV
+    - Propagating cipher block chaining (PCBC)
+    - Cipher feedback (CFB)
+    - Output feedback (OFB)
+    - Electronic codebok (ECB) (i know...)
+8. CLI user interface(?)
+9. API for GUI
+10. GUI in C++

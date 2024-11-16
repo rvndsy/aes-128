@@ -6,6 +6,8 @@
 #include "utils.h"
 #include "aes.h"
 
+#define DEBUG_PRINT 0
+
 #define NK 4    //Number of 32-bit columns for the key - 4 for AES-128, 6 for 192, 8 for 256
 #define NB 4    //Number of 32-bit columns for the state/block/text - always 4
 #define NR 10   //Number of rounds - 10 for AES-128, 12 for 192, 14 for 256
@@ -32,27 +34,65 @@ const byte sBox[256] = {  // x is vertical, y is horizontal
     0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16,
 };
 
+const byte invSBox[256] = {  // x is vertical, y is horizontal
+    0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb,
+    0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb,
+    0x54, 0x7b, 0x94, 0x32, 0xa6, 0xc2, 0x23, 0x3d, 0xee, 0x4c, 0x95, 0x0b, 0x42, 0xfa, 0xc3, 0x4e,
+    0x08, 0x2e, 0xa1, 0x66, 0x28, 0xd9, 0x24, 0xb2, 0x76, 0x5b, 0xa2, 0x49, 0x6d, 0x8b, 0xd1, 0x25,
+    0x72, 0xf8, 0xf6, 0x64, 0x86, 0x68, 0x98, 0x16, 0xd4, 0xa4, 0x5c, 0xcc, 0x5d, 0x65, 0xb6, 0x92,
+    0x6c, 0x70, 0x48, 0x50, 0xfd, 0xed, 0xb9, 0xda, 0x5e, 0x15, 0x46, 0x57, 0xa7, 0x8d, 0x9d, 0x84,
+    0x90, 0xd8, 0xab, 0x00, 0x8c, 0xbc, 0xd3, 0x0a, 0xf7, 0xe4, 0x58, 0x05, 0xb8, 0xb3, 0x45, 0x06,
+    0xd0, 0x2c, 0x1e, 0x8f, 0xca, 0x3f, 0x0f, 0x02, 0xc1, 0xaf, 0xbd, 0x03, 0x01, 0x13, 0x8a, 0x6b,
+    0x3a, 0x91, 0x11, 0x41, 0x4f, 0x67, 0xdc, 0xea, 0x97, 0xf2, 0xcf, 0xce, 0xf0, 0xb4, 0xe6, 0x73,
+    0x96, 0xac, 0x74, 0x22, 0xe7, 0xad, 0x35, 0x85, 0xe2, 0xf9, 0x37, 0xe8, 0x1c, 0x75, 0xdf, 0x6e,
+    0x47, 0xf1, 0x1a, 0x71, 0x1d, 0x29, 0xc5, 0x89, 0x6f, 0xb7, 0x62, 0x0e, 0xaa, 0x18, 0xbe, 0x1b,
+    0xfc, 0x56, 0x3e, 0x4b, 0xc6, 0xd2, 0x79, 0x20, 0x9a, 0xdb, 0xc0, 0xfe, 0x78, 0xcd, 0x5a, 0xf4,
+    0x1f, 0xdd, 0xa8, 0x33, 0x88, 0x07, 0xc7, 0x31, 0xb1, 0x12, 0x10, 0x59, 0x27, 0x80, 0xec, 0x5f,
+    0x60, 0x51, 0x7f, 0xa9, 0x19, 0xb5, 0x4a, 0x0d, 0x2d, 0xe5, 0x7a, 0x9f, 0x93, 0xc9, 0x9c, 0xef,
+    0xa0, 0xe0, 0x3b, 0x4d, 0xae, 0x2a, 0xf5, 0xb0, 0xc8, 0xeb, 0xbb, 0x3c, 0x83, 0x53, 0x99, 0x61,
+    0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d
+};
+
 const byte rcon[10] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36 }; // not using word datatype
 
 // word rotWord(word w) { //circular rotate left by 2 bytes
 //     return (w << 8) | (w >> (32 - 8));
 // }
 
-void subBytes(byte * b) {
+void subBytes(byte * state) {
     for (uint8_t i = 0; i < 16; i++) {
-        b[i] = sBox[b[i]];
+        state[i] = sBox[state[i]];
     }
 }
 
-void shiftRows(byte * b) {
+void shiftRows(byte * state) {
     byte tmp0;
     for (uint8_t i = 1; i < 4; i++) {
         for (uint8_t j = i; j > 0; j--) {
-            tmp0 = b[i];
-            b[i] = b[4+i];
-            b[4+i] = b[8+i];
-            b[8+i] = b[12+i];
-            b[12+i] = tmp0;
+            tmp0 = state[i];
+            state[i] = state[4+i];
+            state[4+i] = state[8+i];
+            state[8+i] = state[12+i];
+            state[12+i] = tmp0;
+        }
+    }
+}
+
+void invSubBytes(byte * state) {
+    for (uint8_t i = 0; i < 16; i++) {
+        state[i] = invSBox[state[i]];
+    }
+}
+
+void invShiftRows(byte * state) {
+    byte tmp0;
+    for (uint8_t i = 1; i < 4; i++) {
+        for (uint8_t j = i; j > 0; j--) {
+            tmp0 = state[i];
+            state[i] = state[12+i];
+            state[12+i] = state[8+i];
+            state[8+i] = state[4+i];
+            state[4+i] = tmp0;
         }
     }
 }
@@ -132,12 +172,27 @@ void mixColumns(byte * b) {
         tmp[1] = b[4*i+1];
         tmp[2] = b[4*i+2];
         tmp[3] = b[4*i+3];
-        b[4*i] =   gf8Multiply(0x2, tmp[0]) ^ gf8Multiply(0x3, tmp[1]) ^ tmp[2] ^ tmp[3];
-        b[4*i+1] = tmp[0] ^ gf8Multiply(0x2, tmp[1]) ^ gf8Multiply(0x3, tmp[2]) ^ tmp[3];
-        b[4*i+2] = tmp[0] ^ tmp[1] ^ gf8Multiply(0x2, tmp[2]) ^ gf8Multiply(0x3, tmp[3]);
-        b[4*i+3] = gf8Multiply(0x3, tmp[0]) ^ tmp[1] ^ tmp[2] ^ gf8Multiply(0x2, tmp[3]);
+        b[4*i] =   gf8Multiply(0x2, tmp[0]) ^ gf8Multiply(0x3, tmp[1]) ^ tmp[2]                   ^ tmp[3];
+        b[4*i+1] =                   tmp[0] ^ gf8Multiply(0x2, tmp[1]) ^ gf8Multiply(0x3, tmp[2]) ^ tmp[3];
+        b[4*i+2] =                   tmp[0] ^                   tmp[1] ^ gf8Multiply(0x2, tmp[2]) ^ gf8Multiply(0x3, tmp[3]);
+        b[4*i+3] = gf8Multiply(0x3, tmp[0]) ^                   tmp[1] ^                   tmp[2] ^ gf8Multiply(0x2, tmp[3]);
     }
 }
+
+void invMixColumns(byte * b) {
+    byte tmp[4];
+    for (uint8_t i = 0; i < 4; i++) {
+        tmp[0] = b[4*i];
+        tmp[1] = b[4*i+1];
+        tmp[2] = b[4*i+2];
+        tmp[3] = b[4*i+3];
+        b[4*i] =   gf8Multiply(0xe, tmp[0]) ^ gf8Multiply(0xb, tmp[1]) ^ gf8Multiply(0xd, tmp[2]) ^ gf8Multiply(0x9, tmp[3]);
+        b[4*i+1] = gf8Multiply(0x9, tmp[0]) ^ gf8Multiply(0xe, tmp[1]) ^ gf8Multiply(0xb, tmp[2]) ^ gf8Multiply(0xd, tmp[3]);
+        b[4*i+2] = gf8Multiply(0xd, tmp[0]) ^ gf8Multiply(0x9, tmp[1]) ^ gf8Multiply(0xe, tmp[2]) ^ gf8Multiply(0xb, tmp[3]);
+        b[4*i+3] = gf8Multiply(0xb, tmp[0]) ^ gf8Multiply(0xd, tmp[1]) ^ gf8Multiply(0x9, tmp[2]) ^ gf8Multiply(0xe, tmp[3]);
+    }
+}
+
 
 // returns 0 if something went wrong    returns 1 if OK
 //
@@ -172,9 +227,11 @@ int encrypt(byte * state, const byte * key, int version) {
         mixColumns(state);
         addRoundKey(&expandedKey[16*round], state);
 
-        printf("%d Add round key (%d):\t", round, 16*round);
-        printByteArray(state, 16);
-        println();
+        if (DEBUG_PRINT == 1) {
+            printf("%d Add round key (%d):\t", round, 16*round);
+            printByteArray(state, 16);
+            println();
+        }
     }
 
     // Final round without mixColumns
@@ -187,106 +244,53 @@ int encrypt(byte * state, const byte * key, int version) {
     return 1;
 }
 
-int main(int argc, char** argv)  {
-    int nk = NK;
-    int nb = NB;
-    int nr = NR;
+int decrypt(byte * state, const byte * key, int version) {
+    // TODO: Add parameter checks
+    // TODO: Add failure checks - return 0
+    // TODO: Add functionality to avoid malloc for expandedKey or something?
+    uint8_t round, nk, nb;
+    if (version == 128) {
+        nk = 4;    //Number of 32-bit columns for the key - 4 for AES-128, 6 for 192, 8 for 256
+        nb = 4;    //Number of 32-bit columns for the state/block/text - always 4
+        round = 10;   //Number of rounds - 10 for AES-128, 12 for 192, 14 for 256
+    } else return 0;
+    byte * expandedKey = (byte*)malloc(sizeof(byte)*16*(round+1));
 
-    byte state[TXT_SIZE], key[KEY_SIZE], expandedKey[EXPANDED_KEY_BYTE_COUNT];
-    byte * keyPtr = expandedKey;
-    //word expandedKey[NR*4+1];
-
-    if (argc < 3) {
-        printf("aes: Too few arguments provided\n");
-        return 1;
-    } else if (argc > 3) {
-        printf("aes: Too many arguments provided\n");
-        return 1;
-    }
-
-    // Reading key and plaintext
-    char tmp[2];
-    for (int i = 0; i < 16; i++) {
-        // Plaintext
-        tmp[0] = argv[1][i*2];
-        tmp[1] = argv[1][i*2+1];
-        state[i] = strToHexByte(tmp);
-
-        // Key
-        tmp[0] = argv[2][i*2];
-        tmp[1] = argv[2][i*2+1];
-        key[i] = strToHexByte(tmp);
-    }
-
-    char textBlock[128] = "6BC1BEE22E409F96E93D7E117393172AAE2D8A571E03AC9C9EB76FAC45AF8E5130C81C46A35CE411E5FBC1191A0A52EFF69F2445DF4F9B17AD2B417BE66C3710";
-    byte * block = malloc(64*sizeof(byte));
-    byte * pBlock = block;
-
-    for (int i = 0; i < 64; i++) {
-        tmp[0] = textBlock[i*2];
-        tmp[1] = textBlock[i*2+1];
-        block[i] = strToHexByte(tmp);
-    }
-
-    encrypt(pBlock, key, 128);
-    pBlock += 16;
-    encrypt(pBlock, key, 128);
-    pBlock += 16;
-    encrypt(pBlock, key, 128);
-    pBlock += 16;
-    encrypt(pBlock, key, 128);
-
-    printByteArray(block, 64);
-
-    free(block);
-
-    return 0;
-
+    // Generating expanded key
     keyExpansion(key, expandedKey);
 
-    printf("Expanded Key: ");
-    printByteArray(expandedKey, EXPANDED_KEY_BYTE_COUNT);
-    println();
-
     // Initial add round key
-    addRoundKey(keyPtr, state);
-
-    printf("Initial key add:");
-    printByteArray(state, 16);
-    println();
-
-    // Encryption
-    for (uint8_t round = 1; round != NR; round++) {
-        subBytes(state);
-        printf("%d Substitution: ", round);
-        printByteArray(state, TXT_SIZE);
-        println();
-
-        shiftRows(state);
-        printf("%d Shift Rows:\t", round);
-        printByteArray(state, TXT_SIZE);
-        println();
-
-        mixColumns(state);
-        printf("%d Mix Columns:\t", round);
-        printByteArray(state, TXT_SIZE);
-        println();
-
-        addRoundKey(&expandedKey[16*round], state);
-
-        printf("%d Add round key (%d):", round, 16*round);
-        printByteArray(state, 16);
-        println();
+    addRoundKey(&expandedKey[16*round], state);
+    if (DEBUG_PRINT == 1) {
+        printf("%d Add Round Key (%d):\t", round, 16*round);
+        printByteArrayPretty(state, 16);
         println();
     }
+    round--;
 
-    subBytes(state);
-    shiftRows(state);
-    addRoundKey(&expandedKey[EXPANDED_KEY_BYTE_COUNT-16], state);
+    for (; round > 0; round--) {
+        invSubBytes(state);
+        invShiftRows(state);
+        addRoundKey(&expandedKey[16*round], state);
+        if (DEBUG_PRINT == 1) {
+            printf("%d Add Round Key (%d):\t", round, 16*round);
+            printByteArrayPretty(state, 16);
+            println();
+        }
+        invMixColumns(state);
+    }
 
-    printf("Encrypted:\t");
-    printByteArray(state, TXT_SIZE);
-    println();
+    // Final round without mixColumns
+    invSubBytes(state);
+    invShiftRows(state);
+    addRoundKey(expandedKey, state);
 
-    return 0;
+    free(expandedKey);
+
+    return 1;
+}
+
+void aes128(byte * state, const byte * key, uint16_t version, uint8_t mode) {
+    if (mode == 0) encrypt(state, key, 128);
+    if (mode == 1) decrypt(state, key, 128);
 }
