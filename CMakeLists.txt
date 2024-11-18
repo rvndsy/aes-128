@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
-project(aes)
-add_library(utils
-    src/utils.c)
-add_executable(aes
-    src/aes.c)
-target_link_libraries(aes utils)
+project(AES)
+#add_compile_definitions(AES_128)
+add_subdirectory(include)
+#add_subdirectory(src)
+
+enable_testing()
+add_subdirectory(tests)

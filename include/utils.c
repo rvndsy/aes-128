@@ -7,7 +7,7 @@ void println() { printf("\n"); }
 
 void printByteHex(byte b) { printf("%02x", b); }
 
-void printWordHex(word b) { printf("%08x", b); }
+//void printWordHex(word b) { printf("%08x", b); }
 
 void printByteArray(const byte * arr, int size) {
     for (int i = 0; i < size; i++) {
@@ -15,7 +15,7 @@ void printByteArray(const byte * arr, int size) {
     }
 }
 
-void printByteArrayPretty(const byte * arr, int size) {
+void printByteArrayPretty(const byte * arr, long size) {
     for (int i = 0; i < size; i++) {
         printf("%02x", arr[i]);
         if (i % 4 == 3) printf(PRETTY_ARRAY_SEPARATOR);
@@ -60,24 +60,29 @@ void convertStrToByteArray(const char * str, byte ** arr, int size) {
     }
 }
 
-int compareByteArrays(const byte * a, const byte * b, int size) {
+int compareByteArrays(const byte * a, const byte * b, int size, int verbose) {
     int mismatchCount = 0;
 
-    printByteArrayPretty(a, size);
-    printf("\n");
+    if (verbose) {
+        printf("In:  ");
+        printByteArrayPretty(a, size);
+        printf("\n     ");
+    }
 
     for (int i = 0; i < size; i++) {
-        if (a[i] != b[i]) {
+        if (a[i] != b[i]) mismatchCount++;
+        if (a[i] != b[i] && verbose) {
             printf("^^");
-            mismatchCount++;
-        } else {
+        } else if (verbose) {
             printf("  ");
         }
         if (i % 4 == 3) printf(PRETTY_ARRAY_SEPARATOR);
     }
 
-    printf("\n");
-    printByteArrayPretty(b, size);
+    if (verbose) {
+        printf("\nOut: ");
+        printByteArrayPretty(b, size);
+    }
 
     return mismatchCount;
 }

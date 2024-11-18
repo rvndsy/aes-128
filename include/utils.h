@@ -5,11 +5,11 @@
 
 void println();
 void printByteHex(byte);
-void printWordHex(word);
+//void printWordHex(word);
 void printByteArray(const byte*, int);
-void printByteArrayPretty(const byte*, int);
+void printByteArrayPretty(const byte*, long);
 byte strToHexByte(char*);
 void convertStrToByteArray(const char*, byte**, int);
-int compareByteArrays(const byte*, const byte*, int);
+int compareByteArrays(const byte*, const byte*, int, int);
 
 #endif // UTILS_H_

@@ -1,0 +1,5 @@
+file(COPY ${CMAKE_SOURCE_DIR}/tests/samples/ DESTINATION ${CMAKE_BINARY_DIR}/tests/samples)
+add_executable(aes-core-128 aes-core-128.c)
+target_link_libraries(aes-core-128 aes)
+add_executable(file-test file-test.c)
+target_link_libraries(file-test aes filecrypto)
