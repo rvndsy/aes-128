@@ -13,14 +13,16 @@ typedef unsigned char byte;
 // Cryptographic context used in crypto algorithms and file encryption that stores the key, iv, chosen function for encryption and decryption
 // aes.h provides a function to prepare the cryptographic context
 typedef struct _cipher_ctx cipher_ctx;
-typedef void (* cryptoFunc)(const cipher_ctx *, byte *);
+typedef void (* cryptoFunc)(byte *, byte *);
 typedef struct _cipher_ctx {
-    unsigned int keySize;
-    unsigned int ivSize;
-    unsigned int stateSize;
     byte * key;
+    byte * roundKeys;
     cryptoFunc encryptFunc;
     cryptoFunc decryptFunc;
+    unsigned int keySize;
+    unsigned int ivSize;
+    unsigned int totalRoundKeySize;
+    unsigned int stateSize;
 } cipher_ctx;
 
 #endif // DEFINITIONS_H_

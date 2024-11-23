@@ -3,10 +3,14 @@
 
 #include "definitions.h" //for byte, cipher_ctx
 
-void prepareAESctx(cipher_ctx *, const byte *, unsigned int);
+void updateAESctx(cipher_ctx *, const byte *, unsigned int);
+cipher_ctx * createAESctx(const byte *, unsigned int);
+void freeAESctx(cipher_ctx *);
 
-void cipher(const cipher_ctx *, byte *);
-void invCipher(const cipher_ctx *, byte *);
+void cipher(byte *, byte *);
+void invCipher(byte *, byte *);
+
+void keyExpansion(const byte *, byte *);
 
 #define NB 4            //Number of 32-bit columns for the state/block/text - always 4
 #define NB_BYTES 16     //Plaintext/Ciphertext/State size in bytes - always 32*NB/8

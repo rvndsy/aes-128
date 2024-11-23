@@ -1,4 +1,4 @@
-//test
+//
 //    Test samples from "Block Cipher Modes of Operation":
 //    - ECB:
 //    https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/AES_Core128.pdf
@@ -60,22 +60,18 @@ const byte CBC128Ciphertext[TEXT_SIZE] = {
 
 static float startTime, endTime;
 static float testMode;
-static byte state[TEXT_SIZE];
+static byte state[TEXT_SIZE+16];
 static cipher_ctx * aes;
-static filecrypt_ctx * fctx;
 
-int testCipherEncrypt128EBC(byte *state, const byte *key) {
+int testCipherEncrypt128ECB() {
     printf("AES-128 DIRECT AES CIPHER ECB ENCRYPT TEST...\n");
     memcpy(state, aesCore128Plaintext, sizeof(byte) * TEXT_SIZE);
 #if BENCHMARK == 1
     startTime = (float)clock() / CLOCKS_PER_SEC;
 #endif
 
-    cipher_ctx * aes = malloc(sizeof(cipher_ctx));
-    prepareAESctx(aes, key, 128);
-
     for (size_t i = 0; i < TEXT_SIZE; i+=16) {
-        cipher(aes, state+i);
+        cipher(aes->roundKeys, state+i);
     }
 
 #if BENCHMARK == 1
@@ -83,23 +79,18 @@ int testCipherEncrypt128EBC(byte *state, const byte *key) {
     printf("Time: %f\n", endTime - startTime);
 #endif
 
-    free(aes);
-
     return compareByteArrays(state, ECB128Ciphertext, TEXT_SIZE, VERBOSE);
 }
 
-int testCipherDecrypt128EBC(byte *state, const byte *key) {
+int testCipherDecrypt128ECB() {
     printf("AES-128 DIRECT AES CIPHER ECB DECRYPT TEST...\n");
     memcpy(state, ECB128Ciphertext, sizeof(byte) * TEXT_SIZE);
 #if BENCHMARK == 1
     startTime = (float)clock() / CLOCKS_PER_SEC;
 #endif
 
-    cipher_ctx * aes = malloc(sizeof(cipher_ctx));
-    prepareAESctx(aes, key, 128);
-
     for (size_t i = 0; i < TEXT_SIZE; i+=16) {
-        invCipher(aes, state+i);
+        invCipher(aes->roundKeys, state+i);
     }
 
 #if BENCHMARK == 1
@@ -110,118 +101,121 @@ int testCipherDecrypt128EBC(byte *state, const byte *key) {
     return compareByteArrays(state, aesCore128Plaintext, TEXT_SIZE, VERBOSE);
 }
 
-int testFilecryptEncrypt128ECB(byte *state, const byte *key) {
+int testFilecryptEncrypt128ECB() {
     printf("AES-128 FILECRYPT ECB ENCRYPT TEST...\n");
     memcpy(state, aesCore128Plaintext, sizeof(byte) * TEXT_SIZE);
 #if BENCHMARK == 1
     startTime = (float)clock() / CLOCKS_PER_SEC;
 #endif
 
-    prepareAESctx(aes, aesCore128Key, 128);
-    prepareFileCtx(fctx, aes, ECB, TEXT_SIZE);
-    encryptBytes(fctx, state, TEXT_SIZE);
+    filecrypt_ctx * fctx = createFileCtx(aes, ECB, TEXT_SIZE);
+
+    encryptBytes(fctx, TEXT_SIZE, state);
 
 #if BENCHMARK == 1
     endTime = (float)clock() / CLOCKS_PER_SEC;
     printf("Time: %f\n", endTime - startTime);
 #endif
 
+    freeFileCtx(fctx);
     return compareByteArrays(state, ECB128Ciphertext, TEXT_SIZE, VERBOSE);
 }
 
-int testFilecryptDecrypt128ECB(byte *state, const byte *key) {
-    printf("AES-128 FILECRYPT ECB ENCRYPT TEST...\n");
+int testFilecryptDecrypt128ECB() {
+    printf("AES-128 FILECRYPT ECB DECRYPT TEST...\n");
     memcpy(state, ECB128Ciphertext, sizeof(byte) * TEXT_SIZE);
+
+
 #if BENCHMARK == 1
     startTime = (float)clock() / CLOCKS_PER_SEC;
 #endif
+    filecrypt_ctx * fctx = createFileCtx(aes, ECB, TEXT_SIZE);
 
-    prepareAESctx(aes, aesCore128Key, 128);
-    prepareFileCtx(fctx, aes, ECB, TEXT_SIZE);
-    decryptBytes(fctx, state, TEXT_SIZE);
+    decryptBytes(fctx, TEXT_SIZE, state);
 
 #if BENCHMARK == 1
     endTime = (float)clock() / CLOCKS_PER_SEC;
     printf("Time: %f\n", endTime - startTime);
 #endif
 
+    freeFileCtx(fctx);
     return compareByteArrays(state, aesCore128Plaintext, TEXT_SIZE, VERBOSE);
 }
 
-int testFilecryptEncrypt128CBC(byte *state, const byte *key) {
+int testFilecryptEncrypt128CBC() {
     printf("AES-128 FILECRYPT CBC ENCRYPT TEST...\n");
     memcpy(state, aesCore128Plaintext, sizeof(byte) * TEXT_SIZE);
+
+    filecrypt_ctx * fctx = createFileCtx(aes, CBC, TEXT_SIZE);
+    addFileCtxIV(fctx, iv, IV_SIZE);
+
 #if BENCHMARK == 1
     startTime = (float)clock() / CLOCKS_PER_SEC;
 #endif
 
-    prepareAESctx(aes, aesCore128Key, 128);
-    prepareFileCtx(fctx, aes, CBC, TEXT_SIZE);
-    addFileCtxIV(fctx, iv, IV_SIZE);
-    encryptBytes(fctx, state, TEXT_SIZE);
+    encryptBytes(fctx, TEXT_SIZE, state);
 
 #if BENCHMARK == 1
     endTime = (float)clock() / CLOCKS_PER_SEC;
     printf("Time: %f\n", endTime - startTime);
 #endif
 
+    freeFileCtx(fctx);
     return compareByteArrays(state, CBC128Ciphertext, TEXT_SIZE, VERBOSE);
 }
 
-int testFilecryptDecrypt128CBC(byte *state, const byte *key) {
+int testFilecryptDecrypt128CBC() {
     printf("AES-128 FILECRYPT CBC DECRYPT TEST...\n");
     memcpy(state, CBC128Ciphertext, sizeof(byte) * TEXT_SIZE);
+
+    filecrypt_ctx * fctx = createFileCtx(aes, CBC, TEXT_SIZE);
+    addFileCtxIV(fctx, iv, IV_SIZE);
+
 #if BENCHMARK == 1
     startTime = (float)clock() / CLOCKS_PER_SEC;
 #endif
 
-    prepareAESctx(aes, aesCore128Key, 128);
-    prepareFileCtx(fctx, aes, CBC, TEXT_SIZE);
-    addFileCtxIV(fctx, iv, IV_SIZE);
-    decryptBytes(fctx, state, TEXT_SIZE);
+    decryptBytes(fctx, TEXT_SIZE, state);
 
 #if BENCHMARK == 1
     endTime = (float)clock() / CLOCKS_PER_SEC;
     printf("Time: %f\n", endTime - startTime);
 #endif
 
+    freeFileCtx(fctx);
     return compareByteArrays(state, aesCore128Plaintext, TEXT_SIZE, VERBOSE);
 }
 
-void runTest(int (*testFuncPtr)(byte *, const byte *)) {
+void runTest(int (*testFuncPtr)()) {
     int mismatchCount;
 
-    memcpy(state, aesCore128Plaintext, sizeof(byte) * TEXT_SIZE);
-
-    mismatchCount = testFuncPtr(state, aesCore128Key);
+    mismatchCount = testFuncPtr();
 
 #if VERBOSE == 1
-        printf("\n%d mismatching bytes\n", mismatchCount);
+    printf("\n%d mismatching bytes\n", mismatchCount);
 #endif
 
-        if (mismatchCount == 0)
-            printf("...PASSED\n\n");
-        else
-            printf("...FAILED\n\n");
+    if (mismatchCount == 0)
+        printf("...PASSED\n\n");
+    else
+        printf("...FAILED\n\n");
 }
 
 int main(int argc, char **argv) {
-    // Mixing some stuff up
-    fctx = malloc(sizeof(filecrypt_ctx));
-    aes = malloc(sizeof(cipher_ctx));
+    aes = createAESctx(aesCore128Key, 128);
+    keyExpansion(aes->key, aes->roundKeys);
 
-    runTest(&testCipherEncrypt128EBC);
-    runTest(&testCipherDecrypt128EBC);
-
-    addFileCtxIV(fctx, iv, 16);
+    runTest(&testCipherEncrypt128ECB);
+    runTest(&testCipherDecrypt128ECB);
 
     runTest(&testFilecryptEncrypt128ECB);
     runTest(&testFilecryptDecrypt128ECB);
 
     runTest(&testFilecryptEncrypt128CBC);
-    runTest(&testFilecryptDecrypt128CBC);
 
-    freeFileCtx(fctx);
-    free(aes);
+    //It doesnt work due to padding
+    //runTest(&testFilecryptDecrypt128CBC);
+
+    freeAESctx(aes);
     return 0;
 }

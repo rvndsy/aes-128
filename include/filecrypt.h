@@ -16,15 +16,16 @@ typedef struct {
     long readFileBlockSize; // in bytes
 } filecrypt_ctx;
 
-void prepareFileCtx(filecrypt_ctx *, cipher_ctx *, unsigned char, long);
+void updateFileCtx(filecrypt_ctx *, cipher_ctx *, unsigned char, long);
+filecrypt_ctx * createFileCtx(cipher_ctx *, unsigned char, long);
 void addFileCtxIV(filecrypt_ctx *, const byte *, int);
 void freeFileCtx(filecrypt_ctx *);
 
 void encryptFile(filecrypt_ctx *, FILE *, FILE *);
 void decryptFile(filecrypt_ctx *, FILE *, FILE *);
 
-void encryptBytes(filecrypt_ctx *, byte *, long);
-void decryptBytes(filecrypt_ctx *, byte *, long);
+void encryptBytes(filecrypt_ctx *, unsigned long, byte *);
+void decryptBytes(filecrypt_ctx *, unsigned long, byte *);
 
 #define ECB 0 // 0x00000000
 #define CBC 1 // 0x0000000C

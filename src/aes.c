@@ -6,19 +6,23 @@
 #include "../include/aes.h"
 
 #define DEBUG_PRINT 0
+
 #if DEBUG_PRINT == 1
 #include <stdio.h>   //for printf
 #include "../include/utils.h"
 #endif
 
-//#define AES_128
+#define AES_128
 
-//#ifdef AES_128
+#define EXPANDED_KEY_BYTE_COUNT_128 176 //44 32-bit words or (4*4*(NR+1))
+#define NK_BYTES_128 16                     //Key size in bytes (NK*32/8)
+
+#ifdef AES_128
 #define NK 4                            //Number of 32-bit columns for the key - 4 for AES-128, 6 for 192, 8 for 256
-#define NR 10                           //Number of rounds - 10 for AES-128, 12 for 192, 14 for 256
-#define KEY_SIZE 16                     //Key size in bytes (NK*32/8)
+#define NK_BYTES 16                     //Key size in bytes (NK*32/8)
 #define EXPANDED_KEY_BYTE_COUNT 176     //44 32-bit words or (4*4*(NR+1))
-//#endif // AES_128
+#define NR 10                           //Number of rounds - 10 for AES-128, 12 for 192, 14 for 256
+#endif // AES_128
 
 static const byte sBox[256] = {  // x is vertical, y is horizontal
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76, 
@@ -60,10 +64,6 @@ static const byte invSBox[256] = {  // x is vertical, y is horizontal
 
 const byte rcon[10] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36 }; // not using word datatype
 
-static byte expandedKey[176];
-static byte stateBuf[2][NB_BYTES]; //Needed for CBC decrypt, ...
-static unsigned char round;
-
 void subBytes(byte * state) {
     for (unsigned char i = 0; i < NB_BYTES; i++) {
         state[i] = sBox[state[i]];
@@ -103,6 +103,7 @@ void invShiftRows(byte * state) {
 }
 
 void keyExpansion(const byte * key, byte * expandedKey) {
+    if (key == NULL || expandedKey == NULL) return;
     int i = 0;
     while (i <= NK - 1) {
         expandedKey[4*i] = key[4*i];
@@ -192,44 +193,87 @@ void invMixColumns(byte * b) {
     }
 }
 
-void prepareAESctx(cipher_ctx * cctx, const byte * key, unsigned int version) {
-    // Setting key based on AES version
-    if (version == 128) {
-        cctx->keySize = 16;
-    } else {
-        fprintf(stderr, "prepareAESctx: Bad AES version given - %d - expected 128, 192 or 256", version);
+void freeAESctx(cipher_ctx * aesCtx) {
+    if (aesCtx == NULL) {
+        return;
     }
+    if (aesCtx->key != NULL) {
+        free(aesCtx->key);
+        aesCtx->key = NULL;
+    }
+    if (aesCtx->roundKeys != NULL) {
+        free(aesCtx->roundKeys);
+        aesCtx->roundKeys = NULL;
+    }
+    free(aesCtx);
+}
+
+void updateAESctx(cipher_ctx * aesCtx, const byte * key, unsigned int version) {
+    // Setting key based on AES version
     if (key == NULL) {
         fprintf(stderr, "prepareAESctx: NULL pointer to key given");
     }
-    cctx->key = malloc(sizeof(byte)*cctx->keySize);
-    memcpy(cctx->key, key, sizeof(byte)*cctx->keySize);
+    if (version == 128) {
+        aesCtx->keySize = NK_BYTES_128;
+        aesCtx->totalRoundKeySize = EXPANDED_KEY_BYTE_COUNT_128;
+    } else {
+        fprintf(stderr, "prepareAESctx: Bad AES version given - %d - expected 128, 192 or 256", version);
+        return;
+    }
+
+    aesCtx->key = realloc(aesCtx->key, sizeof(byte)*aesCtx->keySize);
+    if (aesCtx->key == NULL) {
+        free(aesCtx);
+        return;
+    }
+    memcpy(aesCtx->key, key, sizeof(byte)*aesCtx->keySize);
+
+    aesCtx->roundKeys = realloc(aesCtx->roundKeys, sizeof(byte)*aesCtx->totalRoundKeySize);
+    if (aesCtx->roundKeys == NULL) {
+        free(aesCtx->key);
+        free(aesCtx);
+        return;
+    }
+    keyExpansion(aesCtx->key, aesCtx->roundKeys);
 
     // Setting pointers to AES encryption and decryption functions
-    cctx->encryptFunc = cipher;
-    cctx->decryptFunc = invCipher;
+    aesCtx->encryptFunc = cipher;
+    aesCtx->decryptFunc = invCipher;
 
-    cctx->stateSize = NB_BYTES;
+    aesCtx->stateSize = NB_BYTES;
+}
+
+cipher_ctx * createAESctx(const byte * key, unsigned int version) {
+    cipher_ctx * aesCtx = malloc(sizeof(cipher_ctx));
+    if (aesCtx == NULL) {
+        return NULL;
+    }
+    aesCtx->key = NULL;
+    aesCtx->roundKeys = NULL;
+    updateAESctx(aesCtx, key, version);
+    if (aesCtx->key == NULL || aesCtx->roundKeys == NULL) {
+        freeAESctx(aesCtx);
+        return NULL;
+    }
+    return aesCtx;
 }
 
 // plainText - text to encrypt (64-bits)     key - the AES encrypt/decrypt key (see nk variable comment)
 // out - memory address to store encrypted plainText, to encrypt plainText
 // version (AES version): currently only 128
-void cipher(const cipher_ctx * cctx, byte * state) {
+void cipher(byte * roundKeys, byte * state) {
     // TODO: Please for the love of god do not run keyExpansion every time
-
-    // Generating expanded key
-    keyExpansion(cctx->key, expandedKey);
+    unsigned char round = 0;
 
     // Initial add round key
-    addRoundKey(expandedKey, state);
+    addRoundKey(roundKeys, state);
 
     // Encryption
     for (round = 1; round != NR; round++) {
         subBytes(state);
         shiftRows(state);
         mixColumns(state);
-        addRoundKey(&expandedKey[16*round], state);
+        addRoundKey(&roundKeys[16*round], state);
 
         #if DEBUG_PRINT == 1
             printf("%d Add round key (%d):\t", round, 16*round);
@@ -241,15 +285,14 @@ void cipher(const cipher_ctx * cctx, byte * state) {
     // Final round without mixColumns
     subBytes(state);
     shiftRows(state);
-    addRoundKey(&expandedKey[EXPANDED_KEY_BYTE_COUNT-16], state);
+    addRoundKey(&roundKeys[EXPANDED_KEY_BYTE_COUNT-16], state);
 }
 
-void invCipher(const cipher_ctx * cctx, byte * state) {
-    // Generating expanded key
-    keyExpansion(cctx->key, expandedKey);
+void invCipher(byte * roundKeys, byte * state) {
+    unsigned char round = NR;
 
     // Initial add round key
-    addRoundKey(&expandedKey[NK*4*NR], state);
+    addRoundKey(&roundKeys[NK*4*NR], state);
     #if DEBUG_PRINT == 1
         printf("%d Add Round Key (%d):\t", round, 16*round);
         printByteArrayPretty(state, 16);
@@ -261,7 +304,7 @@ void invCipher(const cipher_ctx * cctx, byte * state) {
     for (; round > 0; round--) {
         invSubBytes(state);
         invShiftRows(state);
-        addRoundKey(&expandedKey[NK*4*round], state);
+        addRoundKey(&roundKeys[NK*4*round], state);
         #if DEBUG_PRINT == 1
             printf("%d Add Round Key (%d):\t", round, 16*round);
             printByteArrayPretty(state, 16);
@@ -273,5 +316,5 @@ void invCipher(const cipher_ctx * cctx, byte * state) {
     // Final round without mixColumns
     invSubBytes(state);
     invShiftRows(state);
-    addRoundKey(expandedKey, state);
+    addRoundKey(roundKeys, state);
 }

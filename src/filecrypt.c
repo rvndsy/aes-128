@@ -5,7 +5,7 @@
 
 // Definitions:
 // file block - A block of bytes that is read into the buffer, encrypted/decrypted and written to a file. One buffer is processed at a time. Block size determined by fileCtx->readFileBlockSize.
-// cipher state - The largest array of bytes that the cipher can encrypt/decrypt at a time. For AES-128 it is 16 bytes.
+// cipher state - The size of array of bytes that the cipher can encrypt/decrypt at a time. For AES-128 it is 16 bytes.
 
 // Global variables that are certainly make this not thread-safe!
 static unsigned long fsizeInBytes;   // Size of the read file in bytes
@@ -17,24 +17,33 @@ static byte * copyBuffer;            // For storing a copy of the read file bloc
 
 static void (*operationModeFunc)(filecrypt_ctx *, byte *);
 
-// Prepare filecrypt_ctx mode of operation (ECB, CBC...), used cipher context (AES), and the size of file read/write buffer in bytes.
-void prepareFileCtx(filecrypt_ctx *fileCtx, cipher_ctx *cctx, unsigned char operationMode, long readFileBlockSize) {
+// Update filecrypt_ctx mode of operation (ECB, CBC...), used cipher context (AES), and the size of file read/write buffer in bytes.
+void updateFileCtx(filecrypt_ctx *fileCtx, cipher_ctx *cctx, unsigned char operationMode, long readFileBlockSize) {
     if (fileCtx == NULL || cctx == NULL) return;
     fileCtx->cipherCtx = cctx;
     fileCtx->operationMode = operationMode;
     fileCtx->readFileBlockSize = readFileBlockSize;
 }
 
-// Mainly for allocation of iv, it is allowed to change it manually
+filecrypt_ctx * createFileCtx(cipher_ctx *cctx, unsigned char operationMode, long readFileBlockSize) {
+    filecrypt_ctx * fileCtx = malloc(sizeof(filecrypt_ctx));
+    updateFileCtx(fileCtx, cctx, operationMode, readFileBlockSize);
+    return fileCtx;
+}
+
+// Mainly for allocation of iv, it is allowed to change iv array manually
 void addFileCtxIV(filecrypt_ctx * fileCtx, const byte * iv, int ivSize) {
     if (fileCtx == NULL) return;
+
     fileCtx->ivSize = ivSize;
+
+    fileCtx->iv = realloc(fileCtx->iv, sizeof(byte) * fileCtx->ivSize);
     if (fileCtx->iv == NULL) {
-        fileCtx->iv = malloc(sizeof(byte)*fileCtx->ivSize);
-    } else {
-        fileCtx->iv = realloc(fileCtx->iv, sizeof(byte)*fileCtx->ivSize);
+        return;
     }
-    if (iv != NULL){
+
+    // If iv data given, copy it
+    if (fileCtx->iv != NULL && iv != NULL) {
         memcpy(fileCtx->iv, iv, sizeof(byte) * fileCtx->ivSize);
     }
 }
@@ -42,14 +51,17 @@ void addFileCtxIV(filecrypt_ctx * fileCtx, const byte * iv, int ivSize) {
 // Free filecrypt_ctx from memory, just free(fileCtx) won't free iv
 void freeFileCtx(filecrypt_ctx * fileCtx) {
     if (fileCtx == NULL) return;
-    if (fileCtx->iv != NULL) free(fileCtx->iv);
+    if (fileCtx->iv != NULL) {
+        free(fileCtx->iv);
+        fileCtx->iv = NULL;
+    }
     free(fileCtx);
 }
 
-void addPadding(filecrypt_ctx * fileCtx, byte *buf) {
+void addPadding(filecrypt_ctx * fileCtx, byte *buffer) {
     byte padSize = fileCtx->cipherCtx->stateSize - bufferDataEnd % fileCtx->cipherCtx->stateSize;
     for (size_t i = 0; i < padSize; i++) {
-        buf[bufferDataEnd + i] = padSize;
+        buffer[bufferDataEnd + i] = padSize;
     }
     bufferDataEnd += padSize;
 }
@@ -83,13 +95,13 @@ void encryptECB(filecrypt_ctx *fileCtx, byte *buffer) {
         addPadding(fileCtx ,buffer);
     }
     for (long i = 0; i < bufferDataEnd; i += fileCtx->cipherCtx->stateSize) {
-        fileCtx->cipherCtx->encryptFunc(fileCtx->cipherCtx, &buffer[i]);
+        fileCtx->cipherCtx->encryptFunc(fileCtx->cipherCtx->roundKeys, &buffer[i]);
     }
 }
 
 void decryptECB(filecrypt_ctx *fileCtx, byte *buffer) {
     for (long i = 0; i < bufferDataEnd; i += fileCtx->cipherCtx->stateSize) {
-        fileCtx->cipherCtx->decryptFunc(fileCtx->cipherCtx, &buffer[i]);
+        fileCtx->cipherCtx->decryptFunc(fileCtx->cipherCtx->roundKeys, &buffer[i]);
     }
     if (isFinalBlock) {
         bufferDataEnd -= buffer[bufferDataEnd - 1];
@@ -99,11 +111,11 @@ void decryptECB(filecrypt_ctx *fileCtx, byte *buffer) {
 void encryptCBC(filecrypt_ctx *fileCtx, byte *buffer) {
     if (isFirstByte) {
         xorByteArrays(buffer, fileCtx->iv, fileCtx->cipherCtx->stateSize);
-        fileCtx->cipherCtx->encryptFunc(fileCtx->cipherCtx, buffer);
+        fileCtx->cipherCtx->encryptFunc(fileCtx->cipherCtx->roundKeys, buffer);
         isFirstByte = 0;
     } else {
         xorByteArrays(buffer, carryOverBuffer, fileCtx->cipherCtx->stateSize);
-        fileCtx->cipherCtx->encryptFunc(fileCtx->cipherCtx, buffer);
+        fileCtx->cipherCtx->encryptFunc(fileCtx->cipherCtx->roundKeys, buffer);
     }
 
     if (isFinalBlock) {
@@ -112,7 +124,7 @@ void encryptCBC(filecrypt_ctx *fileCtx, byte *buffer) {
 
     for (long i = 16; i < bufferDataEnd; i += fileCtx->cipherCtx->stateSize) {
         xorByteArrays(buffer+i, buffer+i-fileCtx->cipherCtx->stateSize, fileCtx->cipherCtx->stateSize);
-        fileCtx->cipherCtx->encryptFunc(fileCtx->cipherCtx, buffer+i);
+        fileCtx->cipherCtx->encryptFunc(fileCtx->cipherCtx->roundKeys, buffer+i);
     }
 
     if (!isFinalBlock) {
@@ -122,16 +134,16 @@ void encryptCBC(filecrypt_ctx *fileCtx, byte *buffer) {
 
 void decryptCBC(filecrypt_ctx *fileCtx, byte *buffer) {
     if (isFirstByte) {
-        fileCtx->cipherCtx->decryptFunc(fileCtx->cipherCtx, buffer);
+        fileCtx->cipherCtx->decryptFunc(fileCtx->cipherCtx->roundKeys, buffer);
         xorByteArrays(buffer, fileCtx->iv, fileCtx->cipherCtx->stateSize);
         isFirstByte = 0;
     } else {
-        fileCtx->cipherCtx->decryptFunc(fileCtx->cipherCtx, buffer);
+        fileCtx->cipherCtx->decryptFunc(fileCtx->cipherCtx->roundKeys, buffer);
         xorByteArrays(buffer, carryOverBuffer, fileCtx->cipherCtx->stateSize);
     }
 
     for (long i = 16; i < bufferDataEnd; i += fileCtx->cipherCtx->stateSize) {
-        fileCtx->cipherCtx->decryptFunc(fileCtx->cipherCtx, buffer+i);
+        fileCtx->cipherCtx->decryptFunc(fileCtx->cipherCtx->roundKeys, buffer+i);
         xorByteArrays(buffer+i, copyBuffer+i-fileCtx->cipherCtx->stateSize, fileCtx->cipherCtx->stateSize);
     }
     if (isFinalBlock) {
@@ -223,47 +235,41 @@ void decryptFile(filecrypt_ctx *fileCtx, FILE *readFile, FILE *writeFile) {
 
 // NOTE: Things below are not used outside some testing... maybe for CTR?
 
-void byteCipher(filecrypt_ctx *fileCtx, byte *b, long size, unsigned char cipherMode) {
-    bufferDataEnd = size;
+void byteCipher(filecrypt_ctx *fileCtx, byte *buffer, long byteBufferDataEnd, unsigned char cipherMode) {
+    bufferDataEnd = byteBufferDataEnd;
 
     if (fileCtx->readFileBlockSize < fileCtx->cipherCtx->stateSize) {
         fprintf(stderr, "byteCipher: Read block size cannot be smaller than the cipher state size");
         return;
     }
 
+    isFinalBlock = isFirstByte = 1;
+
     switch (cipherMode | fileCtx->operationMode) {
         case (ENCRYPT | ECB):
-            printf("ENCRYPTING ECB:\n");
-            encryptECB(fileCtx, b);
+            encryptECB(fileCtx, buffer);
             break;
         case (DECRYPT | ECB):
-            printf("DECRYPTING ECB:\n");
-            decryptECB(fileCtx, b);
+            decryptECB(fileCtx, buffer);
             break;
         case (ENCRYPT | CBC):
-            printf("ENCRYPTING CBC:\n");
-            isFinalBlock = isFirstByte = 1;
-            encryptCBC(fileCtx, b);
+            encryptCBC(fileCtx, buffer);
             break;
         case (DECRYPT | CBC):
-            printf("DECRYPTING CBC:\n");
-            isFinalBlock = isFirstByte = 1;
             copyBuffer = malloc(sizeof(byte) * fileCtx->readFileBlockSize);
-            decryptCBC(fileCtx, b);
+            decryptCBC(fileCtx, buffer);
             break;
     }
 
     if (copyBuffer != NULL) { 
         free(copyBuffer);
     }
-
-    return;
 }
 
-void encryptBytes(filecrypt_ctx *fileCtx, byte *b, long size) {
-    byteCipher(fileCtx, b, size, ENCRYPT);
+void encryptBytes(filecrypt_ctx *fileCtx, unsigned long bufferDataEnd, byte *b) {
+    byteCipher(fileCtx, b, bufferDataEnd, ENCRYPT);
 }
 
-void decryptBytes(filecrypt_ctx *fileCtx, byte *b, long size) {
-    byteCipher(fileCtx, b, size, DECRYPT);
+void decryptBytes(filecrypt_ctx *fileCtx, unsigned long bufferDataEnd, byte *b) {
+    byteCipher(fileCtx, b, bufferDataEnd, DECRYPT);
 }

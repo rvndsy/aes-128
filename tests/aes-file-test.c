@@ -4,6 +4,7 @@
 #include "../include/filecrypt.h"
 #include "../include/aes.h"
 #include "../include/definitions.h"
+#include "../include/utils.h"
 
 #define VERBOSE 1
 #define BENCHMARK 1
@@ -37,10 +38,8 @@ const char * plainTXTSample = "./samples/file.md";
 
 static float startTime, endTime;
 static float testMode;
-static byte state[TEXT_SIZE];
-static filecrypt_ctx fctx;
 
-void testEncryptDecryptPDF128ECB(byte * state, const byte * key) {
+void testEncryptDecryptPDF128ECB() {
     printf("AES-128 ECB ENCRYPT PDF TEST...\n");
 
     FILE * fptrReadPlain, * fptrWriteCipher, * fptrWritePlain;
@@ -59,11 +58,10 @@ void testEncryptDecryptPDF128ECB(byte * state, const byte * key) {
         startTime = (float)clock()/CLOCKS_PER_SEC;
     #endif
 
-    cipher_ctx * aes = malloc(sizeof(cipher_ctx));
+    cipher_ctx * aes = createAESctx(aesCore128Key, 128);
+    filecrypt_ctx * fctx = createFileCtx(aes, ECB, 512);
 
-    prepareAESctx(aes, aesCore128Key, 128);
-    prepareFileCtx(&fctx, aes, ECB, 512);
-    encryptFile(&fctx, fptrReadPlain, fptrWriteCipher);
+    encryptFile(fctx, fptrReadPlain, fptrWriteCipher);
 
     #if BENCHMARK == 1
         endTime = (float)clock()/CLOCKS_PER_SEC;
@@ -74,14 +72,15 @@ void testEncryptDecryptPDF128ECB(byte * state, const byte * key) {
         startTime = (float)clock()/CLOCKS_PER_SEC;
     #endif
 
-    decryptFile(&fctx, fptrWriteCipher, fptrWritePlain);
+    decryptFile(fctx, fptrWriteCipher, fptrWritePlain);
 
     #if BENCHMARK == 1
         endTime = (float)clock()/CLOCKS_PER_SEC;
         printf("Decrypt time: %fs\n", endTime - startTime);
     #endif
 
-    free(aes);
+    freeAESctx(aes);
+    freeFileCtx(fctx);
     fclose(fptrReadPlain);
     fclose(fptrWritePlain);
     fclose(fptrWriteCipher);
@@ -89,7 +88,7 @@ void testEncryptDecryptPDF128ECB(byte * state, const byte * key) {
     //return areFilesEqual;
 }
 
-void testEncryptDecryptPDF128CBC(byte * state, const byte * key) {
+void testEncryptDecryptPDF128CBC() {
     printf("AES-128 CBC ENCRYPT PDF TEST...\n");
 
     FILE * fptrReadPlain, * fptrWriteCipher, * fptrWritePlain;
@@ -108,11 +107,9 @@ void testEncryptDecryptPDF128CBC(byte * state, const byte * key) {
         startTime = (float)clock()/CLOCKS_PER_SEC;
     #endif
 
-    cipher_ctx * aes = malloc(sizeof(cipher_ctx));
-    filecrypt_ctx * fctx = malloc(sizeof(filecrypt_ctx));
+    cipher_ctx * aes = createAESctx(aesCore128Key, 128);
+    filecrypt_ctx * fctx = createFileCtx(aes, CBC, 512);
 
-    prepareAESctx(aes, aesCore128Key, 128);
-    prepareFileCtx(fctx, aes, CBC, 512);
     addFileCtxIV(fctx, iv, 16);
     encryptFile(fctx, fptrReadPlain, fptrWriteCipher);
 
@@ -132,8 +129,8 @@ void testEncryptDecryptPDF128CBC(byte * state, const byte * key) {
         printf("Decrypt time: %fs\n", endTime - startTime);
     #endif
 
+    freeAESctx(aes);
     freeFileCtx(fctx);
-    free(aes);
     fclose(fptrReadPlain);
     fclose(fptrWritePlain);
     fclose(fptrWriteCipher);
