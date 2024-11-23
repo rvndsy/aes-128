@@ -9,22 +9,27 @@
 
 // this and below is in filecrypt.h
 typedef struct {
-    cipher_ctx * cipherCtx; // 
+    cipher_ctx * cipherCtx;
+    byte * iv;                    //iV is technically part of CBC (or other mode), not the cipher itself
+    unsigned int ivSize;
     unsigned char operationMode;  // defined in filecrypto.h
     long readFileBlockSize; // in bytes
 } filecrypt_ctx;
 
 void prepareFileCtx(filecrypt_ctx *, cipher_ctx *, unsigned char, long);
+void addFileCtxIV(filecrypt_ctx *, const byte *, int);
+void freeFileCtx(filecrypt_ctx *);
+
 void encryptFile(filecrypt_ctx *, FILE *, FILE *);
 void decryptFile(filecrypt_ctx *, FILE *, FILE *);
 
 void encryptBytes(filecrypt_ctx *, byte *, long);
 void decryptBytes(filecrypt_ctx *, byte *, long);
 
-#define ECB 0
-#define CBC 1
+#define ECB 0 // 0x00000000
+#define CBC 1 // 0x0000000C
 
-#define ENCRYPT 0
-#define DECRYPT 8
+#define ENCRYPT 16 // 0x000E0000        CBC | ENCRYPT = 0x000E000C
+#define DECRYPT 0  // 0x00000000 
 
 #endif // _FILECRYPT_H_

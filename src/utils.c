@@ -1,6 +1,5 @@
-#include "utils.h"
 #include <stdio.h>
-#include <string.h>
+#include "../include/utils.h"
 
 #define PRETTY_ARRAY_SEPARATOR " "
 

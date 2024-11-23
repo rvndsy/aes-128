@@ -2,13 +2,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h> //for memcpy
-#include "definitions.h"
-#include "aes.h"
+#include "../include/definitions.h"
+#include "../include/aes.h"
 
 #define DEBUG_PRINT 0
 #if DEBUG_PRINT == 1
 #include <stdio.h>   //for printf
-#include "utils.h"
+#include "../include/utils.h"
 #endif
 
 //#define AES_128
@@ -192,7 +192,7 @@ void invMixColumns(byte * b) {
     }
 }
 
-void prepareAESctx(cipher_ctx * cctx, const byte * key, const byte * iv, unsigned int version) {
+void prepareAESctx(cipher_ctx * cctx, const byte * key, unsigned int version) {
     // Setting key based on AES version
     if (version == 128) {
         cctx->keySize = 16;
@@ -204,13 +204,6 @@ void prepareAESctx(cipher_ctx * cctx, const byte * key, const byte * iv, unsigne
     }
     cctx->key = malloc(sizeof(byte)*cctx->keySize);
     memcpy(cctx->key, key, sizeof(byte)*cctx->keySize);
-
-    // Setting iV
-    cctx->ivSize = 16;
-    if (iv != NULL) {
-        cctx->iv = malloc(sizeof(byte)*cctx->ivSize);
-        memcpy(cctx->iv, iv, sizeof(byte) * cctx->ivSize);
-    }
 
     // Setting pointers to AES encryption and decryption functions
     cctx->encryptFunc = cipher;

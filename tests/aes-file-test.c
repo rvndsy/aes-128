@@ -61,7 +61,7 @@ void testEncryptDecryptPDF128ECB(byte * state, const byte * key) {
 
     cipher_ctx * aes = malloc(sizeof(cipher_ctx));
 
-    prepareAESctx(aes, aesCore128Key, NULL, 128);
+    prepareAESctx(aes, aesCore128Key, 128);
     prepareFileCtx(&fctx, aes, ECB, 512);
     encryptFile(&fctx, fptrReadPlain, fptrWriteCipher);
 
@@ -109,10 +109,12 @@ void testEncryptDecryptPDF128CBC(byte * state, const byte * key) {
     #endif
 
     cipher_ctx * aes = malloc(sizeof(cipher_ctx));
+    filecrypt_ctx * fctx = malloc(sizeof(filecrypt_ctx));
 
-    prepareAESctx(aes, aesCore128Key, iv, 128);
-    prepareFileCtx(&fctx, aes, CBC, 512);
-    encryptFile(&fctx, fptrReadPlain, fptrWriteCipher);
+    prepareAESctx(aes, aesCore128Key, 128);
+    prepareFileCtx(fctx, aes, CBC, 512);
+    addFileCtxIV(fctx, iv, 16);
+    encryptFile(fctx, fptrReadPlain, fptrWriteCipher);
 
     #if BENCHMARK == 1
         endTime = (float)clock()/CLOCKS_PER_SEC;
@@ -123,13 +125,14 @@ void testEncryptDecryptPDF128CBC(byte * state, const byte * key) {
         startTime = (float)clock()/CLOCKS_PER_SEC;
     #endif
 
-    decryptFile(&fctx, fptrWriteCipher, fptrWritePlain);
+    decryptFile(fctx, fptrWriteCipher, fptrWritePlain);
 
     #if BENCHMARK == 1
         endTime = (float)clock()/CLOCKS_PER_SEC;
         printf("Decrypt time: %fs\n", endTime - startTime);
     #endif
 
+    freeFileCtx(fctx);
     free(aes);
     fclose(fptrReadPlain);
     fclose(fptrWritePlain);

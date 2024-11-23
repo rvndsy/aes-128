@@ -3,7 +3,7 @@
 
 #include "definitions.h" //for byte, cipher_ctx
 
-void prepareAESctx(cipher_ctx *, const byte *, const byte *, unsigned int);
+void prepareAESctx(cipher_ctx *, const byte *, unsigned int);
 
 void cipher(const cipher_ctx *, byte *);
 void invCipher(const cipher_ctx *, byte *);
