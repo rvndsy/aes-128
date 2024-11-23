@@ -10,3 +10,6 @@ add_library(filecrypt SHARED
     aes.c
     utils.c
 )
+
+add_executable(main main.c)
+target_link_libraries(main filecrypt aes)
