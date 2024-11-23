@@ -2,6 +2,7 @@
 #define UTILS_H_
 
 #include "definitions.h"
+#include "stdio.h"
 
 void println();
 void printByteHex(byte);
@@ -11,5 +12,6 @@ void printByteArrayPretty(const byte*, long);
 byte strToHexByte(char*);
 void convertStrToByteArray(const char*, byte**, int);
 int compareByteArrays(const byte*, const byte*, int, int);
+int compareFiles(FILE *, FILE *);
 
 #endif // UTILS_H_

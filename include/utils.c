@@ -1,5 +1,6 @@
 #include "utils.h"
 #include <stdio.h>
+#include <string.h>
 
 #define PRETTY_ARRAY_SEPARATOR " "
 
@@ -22,21 +23,9 @@ void printByteArrayPretty(const byte * arr, long size) {
     }
 }
 
-// byte charToHex(char c) {
-//     if (c >= 'a' && c <= 'f') {
-//         return c - 'a' + 10;
-//     } else if (c >= 'A' && c <= 'F') {
-//         return c - 'A' + 10;
-//     } else if (c >= '0' && c <= '9') {
-//         return c - '0';
-//     } else {
-//         return 0x10;
-//     }
-// }
-
 byte strToHexByte(char * str) {
     byte out = 0x0;
-    for (uint8_t i = 0; i < 2; i++) {
+    for (unsigned char i = 0; i < 2; i++) {
         if (str[i] >= 'a' && str[i] <= 'f') {
             out |= str[i] - 'a' + 10;
         } else if (str[i] >= 'A' && str[i] <= 'F') {

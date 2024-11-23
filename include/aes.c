@@ -1,5 +1,6 @@
 // Implementation of AES-128. Based on NIST FIPS-197.
-#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h> //for memcpy
 #include "definitions.h"
 #include "aes.h"
@@ -7,6 +8,7 @@
 #define DEBUG_PRINT 0
 #if DEBUG_PRINT == 1
 #include <stdio.h>   //for printf
+#include "utils.h"
 #endif
 
 //#define AES_128
@@ -60,18 +62,18 @@ const byte rcon[10] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x
 
 static byte expandedKey[176];
 static byte stateBuf[2][NB_BYTES]; //Needed for CBC decrypt, ...
-static uint8_t round;
+static unsigned char round;
 
 void subBytes(byte * state) {
-    for (uint8_t i = 0; i < NB_BYTES; i++) {
+    for (unsigned char i = 0; i < NB_BYTES; i++) {
         state[i] = sBox[state[i]];
     }
 }
 
 void shiftRows(byte * state) {
     byte tmp0;
-    for (uint8_t i = 1; i < NB; i++) {
-        for (uint8_t j = i; j > 0; j--) {
+    for (unsigned char i = 1; i < NB; i++) {
+        for (unsigned char j = i; j > 0; j--) {
             tmp0 = state[i];
             state[i] = state[4+i];
             state[4+i] = state[8+i];
@@ -82,15 +84,15 @@ void shiftRows(byte * state) {
 }
 
 void invSubBytes(byte * state) {
-    for (uint8_t i = 0; i < NB_BYTES; i++) {
+    for (unsigned char i = 0; i < NB_BYTES; i++) {
         state[i] = invSBox[state[i]];
     }
 }
 
 void invShiftRows(byte * state) {
     byte tmp0;
-    for (uint8_t i = 1; i < NB; i++) {
-        for (uint8_t j = i; j > 0; j--) {
+    for (unsigned char i = 1; i < NB; i++) {
+        for (unsigned char j = i; j > 0; j--) {
             tmp0 = state[i];
             state[i] = state[12+i];
             state[12+i] = state[8+i];
@@ -136,13 +138,13 @@ void keyExpansion(const byte * key, byte * expandedKey) {
 }
 
 void addRoundKey(const byte * roundKey, byte * state) {
-    for (uint8_t i = 0; i < NB_BYTES; i++) {
+    for (unsigned char i = 0; i < NB_BYTES; i++) {
         state[i] ^= roundKey[i];
     }
 }
 
 byte xTimes(byte a) { // TODO: definitely optimize the flag part
-    uint8_t flag = 0x0;
+    unsigned char flag = 0x0;
     if ((a & 0x80) >> 7) flag = 0x1;
     a <<= 1;
     if (flag) a ^= 0x1b; //0x1b = 11011
@@ -164,7 +166,7 @@ byte gf8Multiply(byte a, byte b) {
 
 void mixColumns(byte * b) {
     byte tmp[4];
-    for (uint8_t i = 0; i < 4; i++) {
+    for (unsigned char i = 0; i < 4; i++) {
         tmp[0] = b[4*i];
         tmp[1] = b[4*i+1];
         tmp[2] = b[4*i+2];
@@ -178,7 +180,7 @@ void mixColumns(byte * b) {
 
 void invMixColumns(byte * b) {
     byte tmp[4];
-    for (uint8_t i = 0; i < 4; i++) {
+    for (unsigned char i = 0; i < 4; i++) {
         tmp[0] = b[4*i];
         tmp[1] = b[4*i+1];
         tmp[2] = b[4*i+2];
@@ -190,15 +192,41 @@ void invMixColumns(byte * b) {
     }
 }
 
+void prepareAESctx(cipher_ctx * cctx, const byte * key, const byte * iv, unsigned int version) {
+    // Setting key based on AES version
+    if (version == 128) {
+        cctx->keySize = 16;
+    } else {
+        fprintf(stderr, "prepareAESctx: Bad AES version given - %d - expected 128, 192 or 256", version);
+    }
+    if (key == NULL) {
+        fprintf(stderr, "prepareAESctx: NULL pointer to key given");
+    }
+    cctx->key = malloc(sizeof(byte)*cctx->keySize);
+    memcpy(cctx->key, key, sizeof(byte)*cctx->keySize);
 
-// returns 0 if something went wrong    returns 1 if OK
-//
+    // Setting iV
+    cctx->ivSize = 16;
+    if (iv != NULL) {
+        cctx->iv = malloc(sizeof(byte)*cctx->ivSize);
+        memcpy(cctx->iv, iv, sizeof(byte) * cctx->ivSize);
+    }
+
+    // Setting pointers to AES encryption and decryption functions
+    cctx->encryptFunc = cipher;
+    cctx->decryptFunc = invCipher;
+
+    cctx->stateSize = NB_BYTES;
+}
+
 // plainText - text to encrypt (64-bits)     key - the AES encrypt/decrypt key (see nk variable comment)
 // out - memory address to store encrypted plainText, to encrypt plainText
 // version (AES version): currently only 128
-void cipher(byte * state, const byte * key) {
+void cipher(const cipher_ctx * cctx, byte * state) {
+    // TODO: Please for the love of god do not run keyExpansion every time
+
     // Generating expanded key
-    keyExpansion(key, expandedKey);
+    keyExpansion(cctx->key, expandedKey);
 
     // Initial add round key
     addRoundKey(expandedKey, state);
@@ -223,9 +251,9 @@ void cipher(byte * state, const byte * key) {
     addRoundKey(&expandedKey[EXPANDED_KEY_BYTE_COUNT-16], state);
 }
 
-void invCipher(byte * state, const byte * key) {
+void invCipher(const cipher_ctx * cctx, byte * state) {
     // Generating expanded key
-    keyExpansion(key, expandedKey);
+    keyExpansion(cctx->key, expandedKey);
 
     // Initial add round key
     addRoundKey(&expandedKey[NK*4*NR], state);
@@ -254,80 +282,3 @@ void invCipher(byte * state, const byte * key) {
     invShiftRows(state);
     addRoundKey(expandedKey, state);
 }
-
-void xorByteArrays(byte * a, const byte * b, int length) {
-    for (int i = 0; i < length; i++) {
-        a[i] ^= b[i];
-    }
-}
-
-// textStart - point to beginning of buffer to encrypt/decrypt
-// key       - the 64-bit key (for AES 128)
-// length    - buffer byte count
-// mode      - ECB or CBC (for now...)      ...defined in aes.h
-// returns successfully encrypted block count
-void encryptECB(byte * bufferStart, const byte * key, int length) {
-    for (long i = 0; i < length; i+=NB_BYTES) {
-        cipher(&bufferStart[i], key);
-    }
-}
-
-void decryptECB(byte * bufferStart, const byte * key, int length) {
-    for (long i = 0; i < length; i+=NB_BYTES) {
-        invCipher(&bufferStart[i], key);
-    }
-}
-
-void encryptCBC(byte * bufferStart, const byte * key, const byte * iv, int length) {
-    if (length <= 16) {
-        xorByteArrays(bufferStart, iv, NB_BYTES);
-        cipher(bufferStart, key);
-        return;
-    }
-
-    xorByteArrays(bufferStart, iv, NB_BYTES);
-    cipher(bufferStart, key);
-
-    for (long i = 16; i < length; i+=NB_BYTES) {
-        xorByteArrays(&bufferStart[i], &bufferStart[i-NB_BYTES], NB_BYTES);
-        cipher(&bufferStart[i], key);
-    }
-}
-
-void decryptCBC(byte * bufferStart, const byte * key, const byte * iv, int length) {
-    if (length <= 16) {
-        invCipher(bufferStart, key);
-        xorByteArrays(bufferStart, iv, NB_BYTES);
-        return;
-    }
-
-    memcpy(stateBuf[0], bufferStart, sizeof(byte)*NB_BYTES);
-    invCipher(bufferStart, key);
-    xorByteArrays(bufferStart, iv, NB_BYTES);
-
-    for (long i = 16; i < length; i+=NB_BYTES) {
-        memcpy(stateBuf[i/NB_BYTES%2], &bufferStart[i], sizeof(byte)*NB_BYTES);
-        invCipher(&bufferStart[i], key);
-        xorByteArrays(&bufferStart[i], stateBuf[((i/NB_BYTES+1)%2)], NB_BYTES);
-    }
-}
-
-// PCBC
-//  memcpy(textBuf1, bufferStart, sizeof(byte)*NB_BYTES);
-//  xorByteArrays(bufferStart, iv, NB_BYTES);
-//  cipher(bufferStart, key);
-
-//  xorByteArrays(textBuf1, bufferStart, NB_BYTES);
-//  memcpy(textBuf2, &bufferStart[16], sizeof(byte)*NB_BYTES);
-//  xorByteArrays(&bufferStart[16], textBuf1, NB_BYTES);
-//  cipher(&bufferStart[16], key);
-
-//  xorByteArrays(textBuf2, &bufferStart[16], NB_BYTES);
-//  memcpy(textBuf1, &bufferStart[32], sizeof(byte)*NB_BYTES);
-//  xorByteArrays(&bufferStart[32], textBuf2, NB_BYTES);
-//  cipher(&bufferStart[32], key);
-
-//  xorByteArrays(textBuf1, &bufferStart[48], NB_BYTES);
-//  memcpy(textBuf2, &bufferStart[48], sizeof(byte)*NB_BYTES);
-//  xorByteArrays(&bufferStart[48], textBuf1, NB_BYTES);
-//  cipher(&bufferStart[48], key);
