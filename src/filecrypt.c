@@ -27,6 +27,7 @@ void updateFileCtx(filecrypt_ctx *fileCtx, cipher_ctx *cctx, unsigned char opera
 
 filecrypt_ctx * createFileCtx(cipher_ctx *cctx, unsigned char operationMode, long readFileBlockSize) {
     filecrypt_ctx * fileCtx = malloc(sizeof(filecrypt_ctx));
+    fprintf(stdout, "addFileCtxIV: Mallocating fileCtx...\n");
     updateFileCtx(fileCtx, cctx, operationMode, readFileBlockSize);
     return fileCtx;
 }
@@ -37,13 +38,21 @@ void addFileCtxIV(filecrypt_ctx * fileCtx, const byte * iv, int ivSize) {
 
     fileCtx->ivSize = ivSize;
 
-    fileCtx->iv = realloc(fileCtx->iv, sizeof(byte) * fileCtx->ivSize);
-    if (fileCtx->iv == NULL) {
+    if (fileCtx->iv != NULL){
+        fprintf(stdout, "addFileCtxIV: Reallocating iv...\n");
+        fileCtx->iv = realloc(fileCtx->iv, sizeof(byte) * fileCtx->ivSize);
+    } else {
+        fprintf(stdout, "addFileCtxIV: Mallocating iv...\n");
+        fileCtx->iv = malloc(sizeof(byte) * fileCtx->ivSize);
+    }
+    if (fileCtx->iv == NULL) { 
+        fprintf(stderr, "addFileCtxIV: Failed to allocate iv\n");
         return;
     }
 
     // If iv data given, copy it
     if (fileCtx->iv != NULL && iv != NULL) {
+        fprintf(stdout, "addFileCtxIV: Memcopying provided iv into fileCtx->iv...\n");
         memcpy(fileCtx->iv, iv, sizeof(byte) * fileCtx->ivSize);
     }
 }
@@ -52,9 +61,11 @@ void addFileCtxIV(filecrypt_ctx * fileCtx, const byte * iv, int ivSize) {
 void freeFileCtx(filecrypt_ctx * fileCtx) {
     if (fileCtx == NULL) return;
     if (fileCtx->iv != NULL) {
+        fprintf(stdout, "freeFileCtx: Freeing iv...\n");
         free(fileCtx->iv);
         fileCtx->iv = NULL;
     }
+    fprintf(stdout, "freeFileCtx: Freeing filecCtx...\n");
     free(fileCtx);
 }
 
@@ -74,7 +85,7 @@ void xorByteArrays(byte *a, const byte *b, int length) {
 
 unsigned long readFileSize(FILE *fptr) {
     if (!fptr) {
-        fprintf(stderr, "readFileToByteArray: Invalid file pointer");
+        fprintf(stderr, "readFileToByteArray: Invalid file pointer\n");
         return 0;
     }
 
@@ -83,7 +94,7 @@ unsigned long readFileSize(FILE *fptr) {
     rewind(fptr);
 
     if (fsize == 0) {
-        fprintf(stderr, "encryptFile: Error reading file size");
+        fprintf(stderr, "encryptFile: Error reading file size\n");
         return 0;
     }
 
@@ -218,9 +229,11 @@ void fileCipher(filecrypt_ctx *fileCtx, FILE *readFile, FILE *writeFile, unsigne
     free(buffer);
     if (carryOverBuffer != NULL) {
         free(carryOverBuffer);
+        carryOverBuffer = NULL;
     }
     if (copyBuffer != NULL) {
         free(copyBuffer);
+        copyBuffer = NULL;
     }
 }
 
@@ -263,6 +276,7 @@ void byteCipher(filecrypt_ctx *fileCtx, byte *buffer, long byteBufferDataEnd, un
 
     if (copyBuffer != NULL) { 
         free(copyBuffer);
+        copyBuffer = NULL;
     }
 }
 

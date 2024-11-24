@@ -1,15 +1,8 @@
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
-add_library(aes SHARED
-    aes.c
-    utils.c
-)
+add_library(aes STATIC aes.c)
+target_include_directories(aes PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
-add_library(filecrypt SHARED
-    filecrypt.c
-    aes.c
-    utils.c
-)
+add_library(utils STATIC utils.c)
+target_include_directories(utils PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
-add_executable(main main.c)
-target_link_libraries(main filecrypt aes)
+add_library(filecrypt STATIC filecrypt.c)
+target_include_directories(filecrypt PUBLIC ${CMAKE_SOURCE_DIR}/include)

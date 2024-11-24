@@ -4,18 +4,12 @@
 #include <QMessageBox>
 #include <QFile>
 
-extern "C" {
-    #include "../include/filecrypt.h"
-    #include "../include/aes.h"
-    #include "../include/utils.h"
-}
-
-MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
+MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWindow) {
     ui->setupUi(this);
 
-    connect(ui->encryptButton, &QPushButton::clicked, this, &MainWindow::onEncryptButtonClicked);
     connect(ui->decryptButton, &QPushButton::clicked, this, &MainWindow::onDecryptButtonClicked);
     connect(ui->fileSelectorButton, &QPushButton::clicked, this, &MainWindow::onSelectFileButtonClicked);
+    connect(ui->encryptButton, &QPushButton::clicked, this, &MainWindow::onEncryptButtonClicked);
 }
 
 void MainWindow::consoleLog(const QString &msg) {
@@ -29,186 +23,174 @@ void MainWindow::onSelectFileButtonClicked() {
     }
 }
 
+byte * MainWindow::getInputKey() {
+    std::string keyStr = ui->keyInputField->toPlainText().toStdString();
+    if (keyStr.length() != 32 || !std::all_of(keyStr.begin(), keyStr.end(), ::isxdigit)) {
+        consoleLog("Error: Key must be 32 hexadecimal digits long.");
+        return NULL;
+    }
+    byte * key = new byte[16];
+    for (int i = 0; i < 16; i++) {
+        char tmp[3];
+        tmp[0] = keyStr[i * 2];
+        tmp[1] = keyStr[i * 2 + 1];
+        key[i] = strToHexByte(tmp);
+    }
+    return key;
+}
+
+byte * MainWindow::getInputIV() {
+    std::string ivStr = ui->ivInputField->toPlainText().toStdString();
+    if (ivStr.length() != 32 || !std::all_of(ivStr.begin(), ivStr.end(), ::isxdigit)) {
+        consoleLog("Error: Initialization vector (iV) must be 32 hexadecimal digits long.");
+        return NULL;
+    }
+    byte * iv = new byte[16];
+    for (int i = 0; i < 16; i++) {
+        char tmp[3];
+        tmp[0] = ivStr[i * 2];
+        tmp[1] = ivStr[i * 2 + 1];
+        iv[i] = strToHexByte(tmp);
+    }
+    return iv;
+}
+
+void MainWindow::initializeContexts() {
+    if (aes != nullptr) {
+        std::unique_ptr<byte[]> key(getInputKey());
+        if (key == nullptr) {
+            consoleLog("initializeContexts: Key input failed.");
+            return;
+        }
+        updateAESctx(aes, key.get(), 128);
+    }
+    if (fctx != nullptr) {
+        if (ui->operationModeComboBox->currentText().contains("ECB")) {
+            updateFileCtx(fctx, aes, ECB, 512);
+        } else if (ui->operationModeComboBox->currentText().contains("CBC")) {
+            std::unique_ptr<byte[]> iv(getInputIV());
+            if (iv == nullptr) {
+                consoleLog("initializeContexts: IV input failed.");
+                return;
+            }
+            updateFileCtx(fctx, aes, CBC, 512);
+            addFileCtxIV(fctx, iv.get(), 16);
+        } else {
+            consoleLog("initializeContexts: AES or file context is NULL after initialization.");
+        }
+    }
+    if (aes == nullptr) {
+        std::unique_ptr<byte[]> key(getInputKey());
+        if (key == nullptr) {
+            consoleLog("initializeContexts: Key input failed.");
+            return;
+        }
+        aes = createAESctx(key.get(), 128);
+        if (aes == nullptr) {
+            consoleLog("initializeContexts: Failed to create AES context.");
+            return;
+        }
+    }
+    if (fctx == nullptr) {
+        QString opMode = ui->operationModeComboBox->currentText();
+        if (opMode.contains("ECB")) {
+            fctx = createFileCtx(aes, ECB, 512);
+            if (fctx == nullptr) {
+                consoleLog("initializeContexts: Failed to create ECB file context.");
+                return;
+            }
+        } else if (opMode.contains("CBC")) {
+            std::unique_ptr<byte[]> iv(getInputIV());
+            if (iv == nullptr) {
+                consoleLog("initializeContexts: IV input failed.");
+                return;
+            }
+            fctx = createFileCtx(aes, CBC, 512);
+            if (fctx == nullptr) {
+                consoleLog("initializeContexts: Failed to create CBC file context.");
+                return;
+            }
+            addFileCtxIV(fctx, iv.get(), 16);
+        }
+    }
+}
+
+void MainWindow::freeContexts() {
+    if (aes != nullptr) {
+        freeAESctx(aes);
+        aes = nullptr;
+    }
+    if (fctx != nullptr) {
+        freeFileCtx(fctx);
+        fctx = nullptr;
+    }
+}
+
 void MainWindow::onEncryptButtonClicked() {
-    QFileInfo readFile (ui->fileSelectTextLabel->text());
-    QString filePath = readFile.path() + QDir::separator(); //platform independant slashes from QDir
+    initializeContexts();
+    if (fctx == nullptr || aes == nullptr) {
+        consoleLog("onEncryptButtonClicked: Context allocation failed");
+        return;
+    }
+
+    QFileInfo readFile(ui->fileSelectTextLabel->text());
+    QString filePath = readFile.path() + QDir::separator();
     QString writeFileName = ui->writeFileNameInput->toPlainText() + ".dat";
     QString encryptedFilePath = filePath + writeFileName;
 
-    byte b[16];
     FILE *freadFile = fopen(readFile.absoluteFilePath().toStdString().c_str(), "rb");
-    // while (fread(b, 1, 16, freadFile)) {
-    //     printByteArrayPretty(b, 16);
-    // }
     if (freadFile == NULL) {
-        consoleLog("Failed to open file for encryption.");
+        consoleLog("Error: Failed to open read file for encryption.");
         return;
     }
 
     FILE *fwriteFile = fopen(encryptedFilePath.toStdString().c_str(), "wb+");
     if (fwriteFile == NULL) {
-        consoleLog("Failed to open file for writing encrypted data.");
+        consoleLog("Error: Failed to open file for writing encrypted data.");
         fclose(freadFile);
         return;
-    }
-
-    std::string keyStr = ui->keyInputField->toPlainText().toStdString();
-    if (ui->keyInputField->toPlainText().isEmpty()) {
-        consoleLog("Please provide a key!");
-        return;
-    }
-    if (!std::all_of(keyStr.begin(), keyStr.end(), ::isxdigit)) {
-        consoleLog("Key must be contain only hexadecimal characters! (0123456789abcdef)");
-        return;
-    }
-    if (keyStr.length() != 32) {
-        consoleLog("Key must be 32 hexadecimal digits long");
-        return;
-    }
-
-    byte key[16];
-    for (int i = 0; i < 16; i++) {
-        char tmp[2];
-        tmp[0] = keyStr[i*2];
-        tmp[1] = keyStr[i*2+1];
-        key[i] = strToHexByte(tmp);
-    }
-
-    printByteArrayPretty(key, 16);
-    printf("\nKey is supposed to be: %s\n", (char*)ui->keyInputField->toPlainText().toStdString().c_str());
-    consoleLog(readFile.absoluteFilePath().toStdString().c_str());
-    consoleLog("Write:" +encryptedFilePath);
-    cipher_ctx * aes = createAESctx(key, 128);
-    filecrypt_ctx * fctx = createFileCtx(aes, ECB, 4096);
-
-    if (ui->operationModeComboBox->currentText().contains("CBC")) {
-        std::string ivStr = ui->ivInputField->toPlainText().toStdString();
-        if (ui->ivInputField->toPlainText().isEmpty()) {
-            consoleLog("Please provide an initialization vector!");
-            freeFileCtx(fctx);
-            freeAESctx(aes);
-            return;
-        }
-        if (!std::all_of(ivStr.begin(), ivStr.end(), ::isxdigit)) {
-            consoleLog("Initialization vector must be contain only hexadecimal characters! (0123456789abcdef)");
-            return;
-        }
-        if (ivStr.length() != 32) {
-            consoleLog("Initialization vector must be 32 hexadecimal digits long");
-            freeFileCtx(fctx);
-            freeAESctx(aes);
-            return;
-        }
-        byte iv[16];
-        for (int i = 0; i < 16; i++) {
-            char tmp[2];
-            tmp[0] = ui->keyInputField->toPlainText().toStdString().c_str()[i*2];
-            tmp[1] = ui->keyInputField->toPlainText().toStdString().c_str()[i*2+1];
-            iv[i] = strToHexByte(tmp);
-        }
-        fctx->operationMode = CBC;
-        addFileCtxIV(fctx, iv, 16);
     }
 
     encryptFile(fctx, freadFile, fwriteFile);
 
     fclose(freadFile);
     fclose(fwriteFile);
-    freeFileCtx(fctx);
-    freeAESctx(aes);
-    consoleLog(encryptedFilePath +" encrypted");
+    consoleLog(encryptedFilePath + " encrypted");
 }
 
 void MainWindow::onDecryptButtonClicked() {
-    QFileInfo readFile (ui->fileSelectTextLabel->text());
-    QString filePath = readFile.path() + QDir::separator(); //platform independant slashes from QDir
-    QString writeFileName = ui->writeFileNameInput->toPlainText();
-    QString encryptedFilePath = filePath + writeFileName;
-
-    byte b[16];
-    FILE *freadFile = fopen(readFile.absoluteFilePath().toStdString().c_str(), "rb");
-    // while (fread(b, 1, 16, freadFile)) {
-    //     printByteArrayPretty(b, 16);
-    // }
-    if (freadFile == NULL) {
-        consoleLog("Failed to open file for encryption.");
+    initializeContexts();
+    if (fctx == nullptr || aes == nullptr) {
+        consoleLog("onDecryptButtonClicked: Context allocation failed");
         return;
     }
 
-    FILE *fwriteFile = fopen(encryptedFilePath.toStdString().c_str(), "wb+");
+    QFileInfo readFile(ui->fileSelectTextLabel->text());
+    QString filePath = readFile.path() + QDir::separator();
+    QString writeFileName = ui->writeFileNameInput->toPlainText();
+    QString decryptedFilePath = filePath + writeFileName;
+
+    FILE *freadFile = fopen(readFile.absoluteFilePath().toStdString().c_str(), "rb");
+    if (freadFile == NULL) {
+        consoleLog("Error: Failed to open read file for decryption.");
+        return;
+    }
+
+    FILE *fwriteFile = fopen(decryptedFilePath.toStdString().c_str(), "wb+");
     if (fwriteFile == NULL) {
-        consoleLog("Failed to open file for writing encrypted data.");
+        consoleLog("Error: Failed to open file for writing decrypted file.");
         fclose(freadFile);
         return;
-    }
-
-    std::string keyStr = ui->keyInputField->toPlainText().toStdString();
-    if (ui->keyInputField->toPlainText().isEmpty()) {
-        consoleLog("Please provide a key!");
-        return;
-    }
-    if (!std::all_of(keyStr.begin(), keyStr.end(), ::isxdigit)) {
-        consoleLog("Key must be contain only hexadecimal characters! (0123456789abcdef)");
-        return;
-    }
-    if (keyStr.length() != 32) {
-        consoleLog("Key must be 32 hexadecimal digits long");
-        return;
-    }
-
-    byte key[16];
-    for (int i = 0; i < 16; i++) {
-        char tmp[2];
-        tmp[0] = ui->keyInputField->toPlainText().toStdString().c_str()[i*2];
-        tmp[1] = ui->keyInputField->toPlainText().toStdString().c_str()[i*2+1];
-        key[i] = strToHexByte(tmp);
-    }
-
-    printByteArrayPretty(key, 16);
-    printf("\nKey is supposed to be: %s\n", (char*)ui->keyInputField->toPlainText().toStdString().c_str());
-    consoleLog(readFile.absoluteFilePath().toStdString().c_str());
-    consoleLog("Write:" +encryptedFilePath);
-    cipher_ctx * aes = createAESctx(key, 128);
-    filecrypt_ctx * fctx = createFileCtx(aes, ECB, 4096);
-
-    if (ui->operationModeComboBox->currentText().contains("CBC")) {
-        std::string ivStr = ui->ivInputField->toPlainText().toStdString();
-        if (ui->ivInputField->toPlainText().isEmpty()) {
-            consoleLog("Please provide an initialization vector!");
-            freeFileCtx(fctx);
-            freeAESctx(aes);
-            return;
-        }
-        if (!std::all_of(ivStr.begin(), ivStr.end(), ::isxdigit)) {
-            consoleLog("Initialization vector must be contain only hexadecimal characters! (0123456789abcdef)");
-            return;
-        }
-        if (ivStr.length() != 32) {
-            consoleLog("Initialization vector must be 32 hexadecimal digits long");
-            freeFileCtx(fctx);
-            freeAESctx(aes);
-            return;
-        }
-        byte iv[16];
-        for (int i = 0; i < 16; i++) {
-            char tmp[2];
-            tmp[0] = ui->keyInputField->toPlainText().toStdString().c_str()[i*2];
-            tmp[1] = ui->keyInputField->toPlainText().toStdString().c_str()[i*2+1];
-            iv[i] = strToHexByte(tmp);
-        }
-        fctx->operationMode = CBC;
-        addFileCtxIV(fctx, iv, 16);
     }
 
     decryptFile(fctx, freadFile, fwriteFile);
 
     fclose(freadFile);
     fclose(fwriteFile);
-    freeFileCtx(fctx);
-    freeAESctx(aes);
-    consoleLog(encryptedFilePath +" decrypted");
+    consoleLog(decryptedFilePath + " decrypted");
 }
 
 MainWindow::~MainWindow() {
+    freeContexts();
     delete ui;
 }

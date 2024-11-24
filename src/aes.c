@@ -7,7 +7,7 @@
 
 #define DEBUG_PRINT 0
 
-#if DEBUG_PRINT == 1
+#if DEBUG_PRINT == 1    //Modify CMake
 #include <stdio.h>   //for printf
 #include "../include/utils.h"
 #endif
@@ -198,42 +198,67 @@ void freeAESctx(cipher_ctx * aesCtx) {
         return;
     }
     if (aesCtx->key != NULL) {
+        fprintf(stderr, "freeAESctx: Freeing key...\n");
         free(aesCtx->key);
         aesCtx->key = NULL;
     }
     if (aesCtx->roundKeys != NULL) {
+        fprintf(stderr, "freeAESctx: Freeing roundKeys...\n");
         free(aesCtx->roundKeys);
         aesCtx->roundKeys = NULL;
     }
+    fprintf(stderr, "freeAESctx: Freeing aesCtx...\n");
     free(aesCtx);
 }
 
 void updateAESctx(cipher_ctx * aesCtx, const byte * key, unsigned int version) {
     // Setting key based on AES version
+    if (aesCtx == NULL) {
+        fprintf(stderr, "prepareAESctx: NULL pointer to aesCtx given\n");
+        return;
+    }
     if (key == NULL) {
-        fprintf(stderr, "prepareAESctx: NULL pointer to key given");
+        fprintf(stderr, "prepareAESctx: NULL pointer to key given\n");
     }
     if (version == 128) {
         aesCtx->keySize = NK_BYTES_128;
         aesCtx->totalRoundKeySize = EXPANDED_KEY_BYTE_COUNT_128;
     } else {
-        fprintf(stderr, "prepareAESctx: Bad AES version given - %d - expected 128, 192 or 256", version);
+        fprintf(stderr, "prepareAESctx: Bad AES version given - %d - expected 128, 192 or 256\n", version);
         return;
     }
 
-    aesCtx->key = realloc(aesCtx->key, sizeof(byte)*aesCtx->keySize);
+    if (aesCtx->key != NULL){
+        fprintf(stderr, "prepareAESctx: Reallocating key...\n");
+        aesCtx->key = realloc(aesCtx->key, sizeof(byte) * aesCtx->keySize);
+    } else {
+        fprintf(stderr, "prepareAESctx: Mallocating key...\n");
+        aesCtx->key = malloc(sizeof(byte) * aesCtx->keySize);
+    }
     if (aesCtx->key == NULL) {
+        fprintf(stderr, "prepareAESctx: Failed to allocate key\n");
         free(aesCtx);
         return;
     }
+    fprintf(stderr, "prepareAESctx: Memcopying key into aesCtx->key...\n");
     memcpy(aesCtx->key, key, sizeof(byte)*aesCtx->keySize);
 
-    aesCtx->roundKeys = realloc(aesCtx->roundKeys, sizeof(byte)*aesCtx->totalRoundKeySize);
+    if (aesCtx->roundKeys != NULL){
+        fprintf(stderr, "prepareAESctx: Reallocating roundKeys...\n");
+        aesCtx->roundKeys = realloc(aesCtx->roundKeys, sizeof(byte) * aesCtx->totalRoundKeySize);
+    } else {
+        fprintf(stderr, "prepareAESctx: Mallocating roundKeys...\n");
+        aesCtx->roundKeys = malloc(sizeof(byte) * aesCtx->totalRoundKeySize);
+    }
     if (aesCtx->roundKeys == NULL) {
+        fprintf(stderr, "prepareAESctx: Failed to allocate roundKeys\n");
+        fprintf(stderr, "Freeing key...");
         free(aesCtx->key);
+        fprintf(stderr, "Freeing aesCtx...\n");
         free(aesCtx);
         return;
     }
+    fprintf(stderr, "prepareAESctx: Expanding roundKeys...\n");
     keyExpansion(aesCtx->key, aesCtx->roundKeys);
 
     // Setting pointers to AES encryption and decryption functions
@@ -243,15 +268,18 @@ void updateAESctx(cipher_ctx * aesCtx, const byte * key, unsigned int version) {
     aesCtx->stateSize = NB_BYTES;
 }
 
+
 cipher_ctx * createAESctx(const byte * key, unsigned int version) {
     cipher_ctx * aesCtx = malloc(sizeof(cipher_ctx));
     if (aesCtx == NULL) {
+        fprintf(stderr, "createAESctx: aesCtx malloc failed, returning...\n");
         return NULL;
     }
     aesCtx->key = NULL;
     aesCtx->roundKeys = NULL;
     updateAESctx(aesCtx, key, version);
     if (aesCtx->key == NULL || aesCtx->roundKeys == NULL) {
+        fprintf(stderr, "createAESctx: Null from updateAESctx, freeing aesCtx...\n");
         freeAESctx(aesCtx);
         return NULL;
     }

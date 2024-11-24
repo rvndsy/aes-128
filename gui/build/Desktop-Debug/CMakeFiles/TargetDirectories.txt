@@ -1,8 +1,0 @@
-/home/ricar/projects/applied-cryptography/gui/build/Desktop-Debug/CMakeFiles/gui.dir
-/home/ricar/projects/applied-cryptography/gui/build/Desktop-Debug/CMakeFiles/edit_cache.dir
-/home/ricar/projects/applied-cryptography/gui/build/Desktop-Debug/CMakeFiles/rebuild_cache.dir
-/home/ricar/projects/applied-cryptography/gui/build/Desktop-Debug/CMakeFiles/list_install_components.dir
-/home/ricar/projects/applied-cryptography/gui/build/Desktop-Debug/CMakeFiles/install.dir
-/home/ricar/projects/applied-cryptography/gui/build/Desktop-Debug/CMakeFiles/install/local.dir
-/home/ricar/projects/applied-cryptography/gui/build/Desktop-Debug/CMakeFiles/install/strip.dir
-/home/ricar/projects/applied-cryptography/gui/build/Desktop-Debug/CMakeFiles/gui_autogen.dir
