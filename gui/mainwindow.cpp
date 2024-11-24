@@ -4,6 +4,11 @@
 #include <QMessageBox>
 #include <QFile>
 
+extern "C" {
+    #include "../include/aes.h"
+    #include "../include/utils.h"
+};
+
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWindow) {
     ui->setupUi(this);
 
@@ -27,7 +32,7 @@ byte * MainWindow::getInputKey() {
     std::string keyStr = ui->keyInputField->toPlainText().toStdString();
     if (keyStr.length() != 32 || !std::all_of(keyStr.begin(), keyStr.end(), ::isxdigit)) {
         consoleLog("Error: Key must be 32 hexadecimal digits long.");
-        return NULL;
+        return nullptr;
     }
     byte * key = new byte[16];
     for (int i = 0; i < 16; i++) {
@@ -43,7 +48,7 @@ byte * MainWindow::getInputIV() {
     std::string ivStr = ui->ivInputField->toPlainText().toStdString();
     if (ivStr.length() != 32 || !std::all_of(ivStr.begin(), ivStr.end(), ::isxdigit)) {
         consoleLog("Error: Initialization vector (iV) must be 32 hexadecimal digits long.");
-        return NULL;
+        return nullptr;
     }
     byte * iv = new byte[16];
     for (int i = 0; i < 16; i++) {
@@ -55,64 +60,65 @@ byte * MainWindow::getInputIV() {
     return iv;
 }
 
-void MainWindow::initializeContexts() {
+bool MainWindow::initializeContexts() {
     if (aes != nullptr) {
-        std::unique_ptr<byte[]> key(getInputKey());
+        byte * key = getInputKey();
         if (key == nullptr) {
             consoleLog("initializeContexts: Key input failed.");
-            return;
+            return false;
         }
-        updateAESctx(aes, key.get(), 128);
+        updateAESctx(aes, key, 128);
     }
     if (fctx != nullptr) {
         if (ui->operationModeComboBox->currentText().contains("ECB")) {
-            updateFileCtx(fctx, aes, ECB, 512);
+            updateFileCtx(fctx, aes, ECB, 4096);
         } else if (ui->operationModeComboBox->currentText().contains("CBC")) {
-            std::unique_ptr<byte[]> iv(getInputIV());
+            byte * iv = getInputIV();
             if (iv == nullptr) {
                 consoleLog("initializeContexts: IV input failed.");
-                return;
+                return false;
             }
-            updateFileCtx(fctx, aes, CBC, 512);
-            addFileCtxIV(fctx, iv.get(), 16);
+            updateFileCtx(fctx, aes, CBC, 4096);
+            addFileCtxIV(fctx, iv, 16);
         } else {
             consoleLog("initializeContexts: AES or file context is NULL after initialization.");
         }
     }
     if (aes == nullptr) {
-        std::unique_ptr<byte[]> key(getInputKey());
+        byte * key = getInputKey();
         if (key == nullptr) {
             consoleLog("initializeContexts: Key input failed.");
-            return;
+            return false;
         }
-        aes = createAESctx(key.get(), 128);
+        aes = createAESctx(key, 128);
         if (aes == nullptr) {
             consoleLog("initializeContexts: Failed to create AES context.");
-            return;
+            return false;
         }
     }
     if (fctx == nullptr) {
         QString opMode = ui->operationModeComboBox->currentText();
         if (opMode.contains("ECB")) {
-            fctx = createFileCtx(aes, ECB, 512);
+            fctx = createFileCtx(aes, ECB, 4096);
             if (fctx == nullptr) {
                 consoleLog("initializeContexts: Failed to create ECB file context.");
-                return;
+                return false;
             }
         } else if (opMode.contains("CBC")) {
-            std::unique_ptr<byte[]> iv(getInputIV());
+            byte * iv = getInputIV();
             if (iv == nullptr) {
                 consoleLog("initializeContexts: IV input failed.");
-                return;
+                return false;
             }
-            fctx = createFileCtx(aes, CBC, 512);
+            fctx = createFileCtx(aes, CBC, 4096);
             if (fctx == nullptr) {
                 consoleLog("initializeContexts: Failed to create CBC file context.");
-                return;
+                return false;
             }
-            addFileCtxIV(fctx, iv.get(), 16);
+            addFileCtxIV(fctx, iv, 16);
         }
     }
+    return true;
 }
 
 void MainWindow::freeContexts() {
@@ -127,7 +133,7 @@ void MainWindow::freeContexts() {
 }
 
 void MainWindow::onEncryptButtonClicked() {
-    initializeContexts();
+    if (!initializeContexts()) return;
     if (fctx == nullptr || aes == nullptr) {
         consoleLog("onEncryptButtonClicked: Context allocation failed");
         return;
@@ -155,11 +161,11 @@ void MainWindow::onEncryptButtonClicked() {
 
     fclose(freadFile);
     fclose(fwriteFile);
-    consoleLog(encryptedFilePath + " encrypted");
+    consoleLog("Encrypted: " +encryptedFilePath);
 }
 
 void MainWindow::onDecryptButtonClicked() {
-    initializeContexts();
+    if (!initializeContexts()) return;
     if (fctx == nullptr || aes == nullptr) {
         consoleLog("onDecryptButtonClicked: Context allocation failed");
         return;
@@ -187,7 +193,7 @@ void MainWindow::onDecryptButtonClicked() {
 
     fclose(freadFile);
     fclose(fwriteFile);
-    consoleLog(decryptedFilePath + " decrypted");
+    consoleLog("Decrypted: " +decryptedFilePath);
 }
 
 MainWindow::~MainWindow() {

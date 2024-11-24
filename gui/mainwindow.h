@@ -8,8 +8,6 @@
 extern "C" {
     #include "../include/definitions.h"
     #include "../include/filecrypt.h"
-    #include "../include/aes.h"
-    #include "../include/utils.h"
 };
 
 QT_BEGIN_NAMESPACE
@@ -27,14 +25,14 @@ private slots:
     void onEncryptButtonClicked();
     void onDecryptButtonClicked();
     void onSelectFileButtonClicked();
-    void initializeContexts();
     void freeContexts();
+    bool initializeContexts();
     unsigned char * getInputIV();
     unsigned char * getInputKey();
 private:
     Ui::MainWindow *ui;
     void consoleLog(const QString &message);
-    cipher_ctx *aes = nullptr;      // AES context
+    cipher_ctx *aes = nullptr;      // MainWindow context
     filecrypt_ctx *fctx = nullptr;  // File ECB/CBC context
 };
 
