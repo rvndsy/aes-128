@@ -145,8 +145,6 @@ void runTest(void (*testFuncPtr)()) {
 int main(int argc, char ** argv) {
     runTest(&testEncryptDecryptPDF128ECB);
     runTest(&testEncryptDecryptPDF128CBC);
-    runTest(&testEncryptDecryptPDF128CBC);
-    runTest(&testEncryptDecryptPDF128CBC);
 
     return 0;
 }

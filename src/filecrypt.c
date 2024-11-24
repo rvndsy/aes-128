@@ -29,7 +29,7 @@ filecrypt_ctx * createFileCtx(cipher_ctx *cctx, unsigned char operationMode, lon
     filecrypt_ctx * fileCtx = malloc(sizeof(filecrypt_ctx));
     fileCtx->iv = NULL;         // Setting allocated struct pointers to null is really really really really really important (if you dont want random crashes)
     fileCtx->cipherCtx = NULL;
-    fprintf(stdout, "addFileCtxIV: Mallocating fileCtx...\n");
+    //fprintf(stdout, "addFileCtxIV: Mallocating fileCtx...\n");
     updateFileCtx(fileCtx, cctx, operationMode, readFileBlockSize);
     return fileCtx;
 }
@@ -41,20 +41,20 @@ void addFileCtxIV(filecrypt_ctx * fileCtx, const byte * iv, int ivSize) {
     fileCtx->ivSize = ivSize;
 
     if (fileCtx->iv != NULL){
-        fprintf(stdout, "addFileCtxIV: Reallocating iv...\n");
+        //fprintf(stdout, "addFileCtxIV: Reallocating iv...\n");
         fileCtx->iv = realloc(fileCtx->iv, sizeof(byte) * fileCtx->ivSize);
     } else {
-        fprintf(stdout, "addFileCtxIV: Mallocating iv...\n");
+        //fprintf(stdout, "addFileCtxIV: Mallocating iv...\n");
         fileCtx->iv = malloc(sizeof(byte) * fileCtx->ivSize);
     }
     if (fileCtx->iv == NULL) { 
-        fprintf(stderr, "addFileCtxIV: Failed to allocate iv\n");
+        //fprintf(stderr, "addFileCtxIV: Failed to allocate iv\n");
         return;
     }
 
     // If iv data given, copy it
     if (fileCtx->iv != NULL && iv != NULL) {
-        fprintf(stdout, "addFileCtxIV: Memcopying provided iv into fileCtx->iv...\n");
+        //fprintf(stdout, "addFileCtxIV: Memcopying provided iv into fileCtx->iv...\n");
         memcpy(fileCtx->iv, iv, sizeof(byte) * fileCtx->ivSize);
     }
 }
@@ -63,11 +63,11 @@ void addFileCtxIV(filecrypt_ctx * fileCtx, const byte * iv, int ivSize) {
 void freeFileCtx(filecrypt_ctx * fileCtx) {
     if (fileCtx == NULL) return;
     if (fileCtx->iv != NULL) {
-        fprintf(stdout, "freeFileCtx: Freeing iv...\n");
+        //fprintf(stdout, "freeFileCtx: Freeing iv...\n");
         free(fileCtx->iv);
         fileCtx->iv = NULL;
     }
-    fprintf(stdout, "freeFileCtx: Freeing filecCtx...\n");
+    //fprintf(stdout, "freeFileCtx: Freeing filecCtx...\n");
     free(fileCtx);
 }
 
