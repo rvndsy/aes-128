@@ -27,6 +27,8 @@ void updateFileCtx(filecrypt_ctx *fileCtx, cipher_ctx *cctx, unsigned char opera
 
 filecrypt_ctx * createFileCtx(cipher_ctx *cctx, unsigned char operationMode, long readFileBlockSize) {
     filecrypt_ctx * fileCtx = malloc(sizeof(filecrypt_ctx));
+    fileCtx->iv = NULL;         // Setting allocated struct pointers to null is really really really really really important (if you dont want random crashes)
+    fileCtx->cipherCtx = NULL;
     fprintf(stdout, "addFileCtxIV: Mallocating fileCtx...\n");
     updateFileCtx(fileCtx, cctx, operationMode, readFileBlockSize);
     return fileCtx;
