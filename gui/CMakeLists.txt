@@ -10,6 +10,12 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+
+## For Windows
+#set(CMAKE_PREFIX_PATH "/Qt/6.8.0/mingw_64/lib/cmake")
+#set(QT CMAKE_PREFIX_PATH "/Qt/6.8.0/msvc2022_x64/lib/cmake")
+
+
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
 
@@ -47,6 +53,13 @@ target_link_libraries(gui PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
 
 # My library:
 target_link_libraries(gui PRIVATE aes filecrypt utils)
+
+# For Windows
+if (MSVC)
+    target_compile_options(gui PUBLIC "/Zc:__cplusplus")
+    target_compile_options(gui PUBLIC "/permissive-")
+    #target_compile_options(gui PUBLIC "-Zc:rvalueCast -Zc:inline -Zc:strictStrings -Zc:throwingNew -permissive-s -Zc:externConstexpr -utf-8 -w34100 -w34189 -w44996 -w44456 -w44457 -w44458")
+endif()
 
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
