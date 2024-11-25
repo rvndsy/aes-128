@@ -3,13 +3,16 @@
 
 #include "definitions.h" //for byte, cipher_ctx
 
+// Functions for managing AES cipher_ctx
 void updateAESctx(cipher_ctx *, const byte *, unsigned int);
 cipher_ctx * createAESctx(const byte *, unsigned int);
 void freeAESctx(cipher_ctx *);
 
+// Encryption and decryption function for a single state
 void cipher(byte *, byte *);
 void invCipher(byte *, byte *);
 
+// Generate round keys for AES, automatically executed within updateAESctx
 void keyExpansion(const byte *, byte *);
 
 #define NB 4            //Number of 32-bit columns for the state/block/text - always 4

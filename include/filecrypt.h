@@ -1,19 +1,19 @@
 #define _FILECRYPT_H_
 #ifdef _FILECRYPT_H_
 
-// NOTE: The two functions modify the file directly in binary mode. They also do
-// not close files.
-
 #include "definitions.h"
 #include <stdio.h>
 
-// this and below is in filecrypt.h
+// IMPORTANT:
+// *readFile must be at least in rb mode
+// *writeFile must be at in wb+ mode
+
 typedef struct {
-    cipher_ctx * cipherCtx;
+    cipher_ctx * cipherCtx;       //defined in definitions.h
     byte * iv;                    //iV is technically part of CBC (or other mode), not the cipher itself
     unsigned int ivSize;
-    unsigned char operationMode;  // defined in filecrypto.h
-    long readFileBlockSize; // in bytes
+    unsigned char operationMode;  // defined below function prototypes
+    long readFileBlockSize;       // how many bytes to read, encrypt/decrypt and write at a time - size of allocated buffer in bytes
 } filecrypt_ctx;
 
 void updateFileCtx(filecrypt_ctx *, cipher_ctx *, unsigned char, long);

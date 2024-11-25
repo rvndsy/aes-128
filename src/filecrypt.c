@@ -5,7 +5,6 @@
 
 // Definitions:
 // file block - A block of bytes that is read into the buffer, encrypted/decrypted and written to a file. One buffer is processed at a time. Block size determined by fileCtx->readFileBlockSize.
-// cipher state - The size of array of bytes that the cipher can encrypt/decrypt at a time. For AES-128 it is 16 bytes.
 
 // Global variables that are certainly make this not thread-safe!
 static unsigned long fsizeInBytes;   // Size of the read file in bytes
@@ -24,7 +23,7 @@ void updateFileCtx(filecrypt_ctx *fileCtx, cipher_ctx *cctx, unsigned char opera
     fileCtx->operationMode = operationMode;
     fileCtx->readFileBlockSize = readFileBlockSize;
 }
-
+// Safely create a file context with values
 filecrypt_ctx * createFileCtx(cipher_ctx *cctx, unsigned char operationMode, long readFileBlockSize) {
     filecrypt_ctx * fileCtx = malloc(sizeof(filecrypt_ctx));
     fileCtx->iv = NULL;         // Setting allocated struct pointers to null is really really really really really important (if you dont want random crashes)
@@ -34,7 +33,7 @@ filecrypt_ctx * createFileCtx(cipher_ctx *cctx, unsigned char operationMode, lon
     return fileCtx;
 }
 
-// Mainly for allocation of iv, it is allowed to change iv array manually
+// Mainly for convenient allocation of iv, it is also allowed to change iv array manually
 void addFileCtxIV(filecrypt_ctx * fileCtx, const byte * iv, int ivSize) {
     if (fileCtx == NULL) return;
 
@@ -58,7 +57,6 @@ void addFileCtxIV(filecrypt_ctx * fileCtx, const byte * iv, int ivSize) {
         memcpy(fileCtx->iv, iv, sizeof(byte) * fileCtx->ivSize);
     }
 }
-
 // Free filecrypt_ctx from memory, just free(fileCtx) won't free iv
 void freeFileCtx(filecrypt_ctx * fileCtx) {
     if (fileCtx == NULL) return;
@@ -70,7 +68,7 @@ void freeFileCtx(filecrypt_ctx * fileCtx) {
     //fprintf(stdout, "freeFileCtx: Freeing filecCtx...\n");
     free(fileCtx);
 }
-
+// Add padding in the final file block
 void addPadding(filecrypt_ctx * fileCtx, byte *buffer) {
     byte padSize = fileCtx->cipherCtx->stateSize - bufferDataEnd % fileCtx->cipherCtx->stateSize;
     for (size_t i = 0; i < padSize; i++) {
@@ -78,13 +76,13 @@ void addPadding(filecrypt_ctx * fileCtx, byte *buffer) {
     }
     bufferDataEnd += padSize;
 }
-
+// Just XOR two arrays together, first one given is overriden
 void xorByteArrays(byte *a, const byte *b, int length) {
     for (int i = 0; i < length; i++) {
         a[i] ^= b[i];
     }
 }
-
+// Read the file size, used for determining file block count
 unsigned long readFileSize(FILE *fptr) {
     if (!fptr) {
         fprintf(stderr, "readFileToByteArray: Invalid file pointer\n");
@@ -93,7 +91,7 @@ unsigned long readFileSize(FILE *fptr) {
 
     fseek(fptr, 0L, SEEK_END);
     long fsize = ftell(fptr);
-    rewind(fptr);
+    rewind(fptr); //Not sure if this is necessary
 
     if (fsize == 0) {
         fprintf(stderr, "encryptFile: Error reading file size\n");
@@ -102,7 +100,7 @@ unsigned long readFileSize(FILE *fptr) {
 
     return fsize;
 }
-
+// Simple block by block encryption with the cipher
 void encryptECB(filecrypt_ctx *fileCtx, byte *buffer) {
     if (isFinalBlock) {
         addPadding(fileCtx ,buffer);
@@ -111,16 +109,17 @@ void encryptECB(filecrypt_ctx *fileCtx, byte *buffer) {
         fileCtx->cipherCtx->encryptFunc(fileCtx->cipherCtx->roundKeys, &buffer[i]);
     }
 }
-
+// Simple block by block decryption with the inverse cipher
 void decryptECB(filecrypt_ctx *fileCtx, byte *buffer) {
     for (long i = 0; i < bufferDataEnd; i += fileCtx->cipherCtx->stateSize) {
         fileCtx->cipherCtx->decryptFunc(fileCtx->cipherCtx->roundKeys, &buffer[i]);
     }
+    // Removing padding after decryption is the same as stepping back the end of data
     if (isFinalBlock) {
         bufferDataEnd -= buffer[bufferDataEnd - 1];
     }
 }
-
+// File encryption with cipher-block-chaining. carryOverBuffer is to carry over a single state over to the next read file block.
 void encryptCBC(filecrypt_ctx *fileCtx, byte *buffer) {
     if (isFirstByte) {
         xorByteArrays(buffer, fileCtx->iv, fileCtx->cipherCtx->stateSize);
@@ -139,12 +138,13 @@ void encryptCBC(filecrypt_ctx *fileCtx, byte *buffer) {
         xorByteArrays(buffer+i, buffer+i-fileCtx->cipherCtx->stateSize, fileCtx->cipherCtx->stateSize);
         fileCtx->cipherCtx->encryptFunc(fileCtx->cipherCtx->roundKeys, buffer+i);
     }
-
+    // Should be called once per call
     if (!isFinalBlock) {
         memcpy(carryOverBuffer, buffer+bufferDataEnd-fileCtx->cipherCtx->stateSize, fileCtx->cipherCtx->stateSize);
     }
 }
-
+// File decryption with cipher-block-chaining. carryOverBuffer is to carry over a single state over to the next read file block.
+// copyBuffer has keeps a copy of the file block ciphertext - less memcpy operations needed
 void decryptCBC(filecrypt_ctx *fileCtx, byte *buffer) {
     if (isFirstByte) {
         fileCtx->cipherCtx->decryptFunc(fileCtx->cipherCtx->roundKeys, buffer);
@@ -159,38 +159,41 @@ void decryptCBC(filecrypt_ctx *fileCtx, byte *buffer) {
         fileCtx->cipherCtx->decryptFunc(fileCtx->cipherCtx->roundKeys, buffer+i);
         xorByteArrays(buffer+i, copyBuffer+i-fileCtx->cipherCtx->stateSize, fileCtx->cipherCtx->stateSize);
     }
+    // Removing padding after decryption is the same as stepping back the end of data
     if (isFinalBlock) {
         bufferDataEnd -= buffer[bufferDataEnd - 1];
         return;
     }
-
+    // Should be called once per call
     if (!isFinalBlock) {
         memcpy(carryOverBuffer, copyBuffer+bufferDataEnd-fileCtx->cipherCtx->stateSize, fileCtx->cipherCtx->stateSize);
     }
 }
-
+// IMPORTANT:
+// *readFile must be at least in rb mode
+// *writeFile must be at in wb+ mode
 void fileCipher(filecrypt_ctx *fileCtx, FILE *readFile, FILE *writeFile, unsigned char cipherMode) {
     if (fileCtx->readFileBlockSize < fileCtx->cipherCtx->stateSize) {
         fprintf(stderr, "fileCipher: Read block size cannot be smaller than the cipher state size");
         return;
     }
-
+    // Get the file size for determining file block count
     fsizeInBytes = readFileSize(readFile);
 
     if (fileCtx->readFileBlockSize > fsizeInBytes) {
         fprintf(stdout, "fileCipher - long fsizeInBytes: readFileBlockSize %ld is larger than the file size in bytes %ld",
                 fileCtx->readFileBlockSize, fsizeInBytes);
     }
-
+    // Create buffer for reading and writing data
     byte *buffer = (byte *)malloc(sizeof(byte) * fileCtx->readFileBlockSize);
 
     if (!buffer) {
         fprintf(stderr, "fileCipher: Failed to allocate buffer");
         return;
     }
-
+    // Calculate file block count. it is +1 because the file size in bytes might be a multiplier of the readFileBlockSize
     long blockCount = (fsizeInBytes / fileCtx->readFileBlockSize) + 1;
-
+    // Use flags to determine chosen operation. Allocate what is necessary for the given operation.
     switch (cipherMode | fileCtx->operationMode) {
         case (ENCRYPT | ECB):
             operationModeFunc = encryptECB;
@@ -208,14 +211,14 @@ void fileCipher(filecrypt_ctx *fileCtx, FILE *readFile, FILE *writeFile, unsigne
             carryOverBuffer = malloc(sizeof(byte) * fileCtx->cipherCtx->stateSize);
             break;
     }
-
-    if (fileCtx->operationMode != ENCRYPT) {
-        isFirstByte = 1;
-    } 
-
+    // Not necessary, but to show that they are indeed set
+    isFirstByte = 1;
+    isFinalBlock = 0;
+    // Run the cipher block by block.
     for (int curBlock = 1; curBlock <= blockCount; curBlock++) {
+        // Read readFileBlockSize amount of bytes from file
         bufferDataEnd = fread(buffer, sizeof(byte), fileCtx->readFileBlockSize, readFile);
-
+        // Fill copyBuffer for CBC decrypt
         if (copyBuffer != NULL) {
             memcpy(copyBuffer, buffer, fileCtx->readFileBlockSize);
         }
@@ -223,11 +226,10 @@ void fileCipher(filecrypt_ctx *fileCtx, FILE *readFile, FILE *writeFile, unsigne
         isFinalBlock = (curBlock == blockCount);
 
         operationModeFunc(fileCtx, buffer);
-
+        // Write bufferDataEnd amount of bytes from file. bufferDataEnd is used because of padding in the final file block
         bytesWritten = fwrite(buffer, sizeof(byte), bufferDataEnd, writeFile);
     }
-
-    isFinalBlock = 0;
+    // Free what must be freed!
     free(buffer);
     if (carryOverBuffer != NULL) {
         free(carryOverBuffer);
@@ -238,7 +240,8 @@ void fileCipher(filecrypt_ctx *fileCtx, FILE *readFile, FILE *writeFile, unsigne
         copyBuffer = NULL;
     }
 }
-
+// In my opinion it is simpler to call encrypt or decrypt than to pass ENCRYPT or DECRYPT to fileCipher.
+// Alternate solution could be set the operation mode function and allocations in here.
 void encryptFile(filecrypt_ctx *fileCtx, FILE *readFile, FILE *writeFile) {
     fileCipher(fileCtx, readFile, writeFile, ENCRYPT);
 }
@@ -248,8 +251,7 @@ void decryptFile(filecrypt_ctx *fileCtx, FILE *readFile, FILE *writeFile) {
 }
 
 
-// NOTE: Things below are not used outside some testing... maybe for CTR?
-
+// NOTE: Things below are not currently used outside testing. Can be used to encrypt regular text input.
 void byteCipher(filecrypt_ctx *fileCtx, byte *buffer, long byteBufferDataEnd, unsigned char cipherMode) {
     bufferDataEnd = byteBufferDataEnd;
 

@@ -11,23 +11,23 @@ extern "C" {
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWindow) {
     ui->setupUi(this);
-
+    // Set up event listeners for buttons
     connect(ui->decryptButton, &QPushButton::clicked, this, &MainWindow::onDecryptButtonClicked);
     connect(ui->fileSelectorButton, &QPushButton::clicked, this, &MainWindow::onSelectFileButtonClicked);
     connect(ui->encryptButton, &QPushButton::clicked, this, &MainWindow::onEncryptButtonClicked);
 }
-
+// For output to the bottom "Console Log" field
 void MainWindow::consoleLog(const QString &msg) {
     ui->statusMessageLabel->append(msg);
 }
-
+// Open file selection menu and set the file path to the selected file label
 void MainWindow::onSelectFileButtonClicked() {
     QString filePath = QFileDialog::getOpenFileName(this, "Select a file", "", "All Files (*)");
     if (!filePath.isEmpty()) {
         ui->fileSelectTextLabel->setText(filePath);
     }
 }
-
+// Get input key string and convert it to a 16 byte array
 byte * MainWindow::getInputKey() {
     std::string keyStr = ui->keyInputField->toPlainText().toStdString();
     if (keyStr.length() != 32 || !std::all_of(keyStr.begin(), keyStr.end(), ::isxdigit)) {
@@ -43,7 +43,7 @@ byte * MainWindow::getInputKey() {
     }
     return key;
 }
-
+// Get input iv string and convert it to a 16 byte array
 byte * MainWindow::getInputIV() {
     std::string ivStr = ui->ivInputField->toPlainText().toStdString();
     if (ivStr.length() != 32 || !std::all_of(ivStr.begin(), ivStr.end(), ::isxdigit)) {
@@ -59,8 +59,9 @@ byte * MainWindow::getInputIV() {
     }
     return iv;
 }
-
+// Initialize or update contexts with safe memory management
 bool MainWindow::initializeContexts() {
+    // Update contexts if they are allocated
     if (aes != nullptr) {
         byte * key = getInputKey();
         if (key == nullptr) {
@@ -84,6 +85,7 @@ bool MainWindow::initializeContexts() {
             consoleLog("initializeContexts: AES or file context is NULL after initialization.");
         }
     }
+    // Create contexts if they are not allocated
     if (aes == nullptr) {
         byte * key = getInputKey();
         if (key == nullptr) {
@@ -120,43 +122,36 @@ bool MainWindow::initializeContexts() {
     }
     return true;
 }
-
-void MainWindow::freeContexts() {
-    if (aes != nullptr) {
-        freeAESctx(aes);
-        aes = nullptr;
-    }
-    if (fctx != nullptr) {
-        freeFileCtx(fctx);
-        fctx = nullptr;
-    }
-}
-
+// onEncryptButtonClicked and onDecryptButtonClicked are very similar
 void MainWindow::onEncryptButtonClicked() {
+    // Create or update the contexts firstly
     if (!initializeContexts()) return;
     if (fctx == nullptr || aes == nullptr) {
         consoleLog("onEncryptButtonClicked: Context allocation failed");
         return;
     }
-
+    // Gather path information from file input fields
     QFileInfo readFile(ui->fileSelectTextLabel->text());
     QString filePath = readFile.path() + QDir::separator();
     QString writeFileName = ui->writeFileNameInput->toPlainText() + ".dat";
     QString encryptedFilePath = filePath + writeFileName;
-
+    // Open pointer for reading file in read-binary mode
     FILE *freadFile = fopen(readFile.absoluteFilePath().toStdString().c_str(), "rb");
     if (freadFile == NULL) {
         consoleLog("Error: Failed to open read file for encryption.");
         return;
     }
-
+    // Open pointer for reading file in write-binary mode. 
+    //
+    //      IMPORTANT: It will override the file if it already exists!!!!!!
+    //
     FILE *fwriteFile = fopen(encryptedFilePath.toStdString().c_str(), "wb+");
     if (fwriteFile == NULL) {
         consoleLog("Error: Failed to open file for writing encrypted data.");
         fclose(freadFile);
         return;
     }
-
+    // If contexts and file pointers are set up fine, run encryptFile
     encryptFile(fctx, freadFile, fwriteFile);
 
     fclose(freadFile);
@@ -194,6 +189,18 @@ void MainWindow::onDecryptButtonClicked() {
     fclose(freadFile);
     fclose(fwriteFile);
     consoleLog("Decrypted: " +decryptedFilePath);
+}
+
+// Free contexts upon closing the app
+void MainWindow::freeContexts() {
+    if (aes != nullptr) {
+        freeAESctx(aes);
+        aes = nullptr;
+    }
+    if (fctx != nullptr) {
+        freeFileCtx(fctx);
+        fctx = nullptr;
+    }
 }
 
 MainWindow::~MainWindow() {

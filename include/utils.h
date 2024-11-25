@@ -4,6 +4,7 @@
 #include "definitions.h"
 #include "stdio.h"
 
+// Helper functions
 void println();
 void printByteHex(byte);
 //void printWordHex(word);

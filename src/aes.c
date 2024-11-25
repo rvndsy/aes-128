@@ -1,13 +1,14 @@
 // Implementation of AES-128. Based on NIST FIPS-197.
+// Not particularly optimized or fast. It is meant for a study course as an exercise to understand AES.
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h> //for memcpy
+#include <string.h> //for memory operations
 #include "../include/definitions.h"
 #include "../include/aes.h"
 
-#define DEBUG_PRINT 0
+#define DEBUG_PRINT 0 //1 to print AddRoundKeys output for every round
 
-#if DEBUG_PRINT == 1    //Modify CMake
+#if DEBUG_PRINT == 1
 #include <stdio.h>   //for printf
 #include "../include/utils.h"
 #endif
@@ -64,135 +65,7 @@ static const byte invSBox[256] = {  // x is vertical, y is horizontal
 
 const byte rcon[10] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36 }; // not using word datatype
 
-void subBytes(byte * state) {
-    for (unsigned char i = 0; i < NB_BYTES; i++) {
-        state[i] = sBox[state[i]];
-    }
-}
-
-void shiftRows(byte * state) {
-    byte tmp0;
-    for (unsigned char i = 1; i < NB; i++) {
-        for (unsigned char j = i; j > 0; j--) {
-            tmp0 = state[i];
-            state[i] = state[4+i];
-            state[4+i] = state[8+i];
-            state[8+i] = state[12+i];
-            state[12+i] = tmp0;
-        }
-    }
-}
-
-void invSubBytes(byte * state) {
-    for (unsigned char i = 0; i < NB_BYTES; i++) {
-        state[i] = invSBox[state[i]];
-    }
-}
-
-void invShiftRows(byte * state) {
-    byte tmp0;
-    for (unsigned char i = 1; i < NB; i++) {
-        for (unsigned char j = i; j > 0; j--) {
-            tmp0 = state[i];
-            state[i] = state[12+i];
-            state[12+i] = state[8+i];
-            state[8+i] = state[4+i];
-            state[4+i] = tmp0;
-        }
-    }
-}
-
-void keyExpansion(const byte * key, byte * expandedKey) {
-    if (key == NULL || expandedKey == NULL) return;
-    int i = 0;
-    while (i <= NK - 1) {
-        expandedKey[4*i] = key[4*i];
-        expandedKey[4*i+1] = key[4*i+1];
-        expandedKey[4*i+2] = key[4*i+2];
-        expandedKey[4*i+3] = key[4*i+3];
-        i++;
-    }
-    byte tmp[4], tmp0;
-    while (i <= 4 * NR + 3) {
-        tmp[0] = expandedKey[4*(i-1)];
-        tmp[1] = expandedKey[4*(i-1)+1];
-        tmp[2] = expandedKey[4*(i-1)+2];
-        tmp[3] = expandedKey[4*(i-1)+3];
-        if (i % NK == 0) {
-            tmp0 = tmp[0];
-            tmp[0] = sBox[tmp[1]] ^ rcon[i/NK-1]; //rcon index requires -1 - not in fips
-            tmp[1] = sBox[tmp[2]];
-            tmp[2] = sBox[tmp[3]];
-            tmp[3] = sBox[tmp0];
-        } else if (NK > 6 && i % NK == 4) { //for AES-256
-            tmp[0] = sBox[tmp[0]];
-            tmp[1] = sBox[tmp[1]];
-            tmp[2] = sBox[tmp[2]];
-            tmp[3] = sBox[tmp[3]];
-        }
-        expandedKey[4*i] = expandedKey[(i-NK)*4] ^ tmp[0];
-        expandedKey[4*i+1] = expandedKey[(i-NK)*4+1] ^ tmp[1];
-        expandedKey[4*i+2] = expandedKey[(i-NK)*4+2] ^ tmp[2];
-        expandedKey[4*i+3] = expandedKey[(i-NK)*4+3] ^ tmp[3];
-        i++;
-    }
-}
-
-void addRoundKey(const byte * roundKey, byte * state) {
-    for (unsigned char i = 0; i < NB_BYTES; i++) {
-        state[i] ^= roundKey[i];
-    }
-}
-
-byte xTimes(byte a) { // TODO: definitely optimize the flag part
-    unsigned char flag = 0x0;
-    if ((a & 0x80) >> 7) flag = 0x1;
-    a <<= 1;
-    if (flag) a ^= 0x1b; //0x1b = 11011
-    return a;
-}
-
-byte gf8Multiply(byte a, byte b) {
-    if (b == 0x0) return 0x0; //The following if returns 0x0 if b is 0x0, else a*0 would return a. 0*b should correctly return 0.
-    byte tmp = 0x0;
-    // At each step we check if b is all 0's (0 means nothing more to multiply)
-    while (b) {
-        if (b & 0x1) tmp ^= a;
-        // We execute xTimes(a) together with b >> 1, because by shifting b the least significant bit in b becomes the current power of 2 that xTimes(a) produces.
-        a = xTimes(a);
-        b >>= 1;
-    }
-    return tmp;
-}
-
-void mixColumns(byte * b) {
-    byte tmp[4];
-    for (unsigned char i = 0; i < 4; i++) {
-        tmp[0] = b[4*i];
-        tmp[1] = b[4*i+1];
-        tmp[2] = b[4*i+2];
-        tmp[3] = b[4*i+3];
-        b[4*i] =   gf8Multiply(0x2, tmp[0]) ^ gf8Multiply(0x3, tmp[1]) ^ tmp[2]                   ^ tmp[3];
-        b[4*i+1] =                   tmp[0] ^ gf8Multiply(0x2, tmp[1]) ^ gf8Multiply(0x3, tmp[2]) ^ tmp[3];
-        b[4*i+2] =                   tmp[0] ^                   tmp[1] ^ gf8Multiply(0x2, tmp[2]) ^ gf8Multiply(0x3, tmp[3]);
-        b[4*i+3] = gf8Multiply(0x3, tmp[0]) ^                   tmp[1] ^                   tmp[2] ^ gf8Multiply(0x2, tmp[3]);
-    }
-}
-
-void invMixColumns(byte * b) {
-    byte tmp[4];
-    for (unsigned char i = 0; i < 4; i++) {
-        tmp[0] = b[4*i];
-        tmp[1] = b[4*i+1];
-        tmp[2] = b[4*i+2];
-        tmp[3] = b[4*i+3];
-        b[4*i] =   gf8Multiply(0xe, tmp[0]) ^ gf8Multiply(0xb, tmp[1]) ^ gf8Multiply(0xd, tmp[2]) ^ gf8Multiply(0x9, tmp[3]);
-        b[4*i+1] = gf8Multiply(0x9, tmp[0]) ^ gf8Multiply(0xe, tmp[1]) ^ gf8Multiply(0xb, tmp[2]) ^ gf8Multiply(0xd, tmp[3]);
-        b[4*i+2] = gf8Multiply(0xd, tmp[0]) ^ gf8Multiply(0x9, tmp[1]) ^ gf8Multiply(0xe, tmp[2]) ^ gf8Multiply(0xb, tmp[3]);
-        b[4*i+3] = gf8Multiply(0xb, tmp[0]) ^ gf8Multiply(0xd, tmp[1]) ^ gf8Multiply(0x9, tmp[2]) ^ gf8Multiply(0xe, tmp[3]);
-    }
-}
-
+// Safely free memory in one function
 void freeAESctx(cipher_ctx * aesCtx) {
     if (aesCtx == NULL) {
         return;
@@ -210,7 +83,7 @@ void freeAESctx(cipher_ctx * aesCtx) {
     //fprintf(stderr, "freeAESctx: Freeing aesCtx...\n");
     free(aesCtx);
 }
-
+// Safely update values of AES cipher_ctx in one function
 void updateAESctx(cipher_ctx * aesCtx, const byte * key, unsigned int version) {
     // Setting key based on AES version
     if (aesCtx == NULL) {
@@ -268,7 +141,7 @@ void updateAESctx(cipher_ctx * aesCtx, const byte * key, unsigned int version) {
     aesCtx->stateSize = NB_BYTES;
 }
 
-
+// Safely create and update an cipher_ctx for AES with correct values
 cipher_ctx * createAESctx(const byte * key, unsigned int version) {
     cipher_ctx * aesCtx = malloc(sizeof(cipher_ctx));
     if (aesCtx == NULL) {
@@ -285,18 +158,142 @@ cipher_ctx * createAESctx(const byte * key, unsigned int version) {
     }
     return aesCtx;
 }
+// Substition for Cipher
+void subBytes(byte * state) {
+    for (unsigned char i = 0; i < NB_BYTES; i++) {
+        state[i] = sBox[state[i]];
+    }
+}
+// Row shifting to the "right" for Cipher
+void shiftRows(byte * state) {
+    byte tmp0;
+    for (unsigned char i = 1; i < NB; i++) {
+        for (unsigned char j = i; j > 0; j--) {
+            tmp0 = state[i];
+            state[i] = state[4+i];
+            state[4+i] = state[8+i];
+            state[8+i] = state[12+i];
+            state[12+i] = tmp0;
+        }
+    }
+}
+// Substition for invCipher
+void invSubBytes(byte * state) {
+    for (unsigned char i = 0; i < NB_BYTES; i++) {
+        state[i] = invSBox[state[i]];
+    }
+}
+// Row shifting to the "left" for invCipher
+void invShiftRows(byte * state) {
+    byte tmp0;
+    for (unsigned char i = 1; i < NB; i++) {
+        for (unsigned char j = i; j > 0; j--) {
+            tmp0 = state[i];
+            state[i] = state[12+i];
+            state[12+i] = state[8+i];
+            state[8+i] = state[4+i];
+            state[4+i] = tmp0;
+        }
+    }
+}
+// Generate round keys for AES. Expanded key is 176 bytes for AES-128. This implementaiton uses a 1D array of bytes not words as the state.
+void keyExpansion(const byte * key, byte * expandedKey) {
+    if (key == NULL || expandedKey == NULL) return;
+    int i = 0;
+    while (i <= NK - 1) {
+        expandedKey[4*i] = key[4*i];
+        expandedKey[4*i+1] = key[4*i+1];
+        expandedKey[4*i+2] = key[4*i+2];
+        expandedKey[4*i+3] = key[4*i+3];
+        i++;
+    }
+    byte tmp[4], tmp0;
+    while (i <= 4 * NR + 3) {
+        tmp[0] = expandedKey[4*(i-1)];
+        tmp[1] = expandedKey[4*(i-1)+1];
+        tmp[2] = expandedKey[4*(i-1)+2];
+        tmp[3] = expandedKey[4*(i-1)+3];
+        if (i % NK == 0) {
+            tmp0 = tmp[0];
+            tmp[0] = sBox[tmp[1]] ^ rcon[i/NK-1]; //rcon index requires -1 - not in fips
+            tmp[1] = sBox[tmp[2]];
+            tmp[2] = sBox[tmp[3]];
+            tmp[3] = sBox[tmp0];
+        } else if (NK > 6 && i % NK == 4) { //for AES-256
+            tmp[0] = sBox[tmp[0]];
+            tmp[1] = sBox[tmp[1]];
+            tmp[2] = sBox[tmp[2]];
+            tmp[3] = sBox[tmp[3]];
+        }
+        expandedKey[4*i] = expandedKey[(i-NK)*4] ^ tmp[0];
+        expandedKey[4*i+1] = expandedKey[(i-NK)*4+1] ^ tmp[1];
+        expandedKey[4*i+2] = expandedKey[(i-NK)*4+2] ^ tmp[2];
+        expandedKey[4*i+3] = expandedKey[(i-NK)*4+3] ^ tmp[3];
+        i++;
+    }
+}
+// XOR state with the round key
+void addRoundKey(const byte * roundKey, byte * state) {
+    for (unsigned char i = 0; i < NB_BYTES; i++) {
+        state[i] ^= roundKey[i];
+    }
+}
+// Used for multiplication in galois field
+byte xTimes(byte a) { // TODO: definitely optimize the flag part
+    if (a & 0x80) // If most significant bit is set left shift and XOR with 0x1b
+        return (a << 1) ^ 0x1b;
+    return a << 1;
+}
 
-// plainText - text to encrypt (64-bits)     key - the AES encrypt/decrypt key (see nk variable comment)
-// out - memory address to store encrypted plainText, to encrypt plainText
-// version (AES version): currently only 128
+byte gf8Multiply(byte a, byte b) {
+    byte out = 0x0;
+    // At each step we check if b is all 0's (0 means nothing more to multiply)
+    while (b) {
+        if (b & 0x1) out ^= a;
+        // We execute xTimes(a) together with b >> 1, because by shifting b the least significant bit in b becomes the current power of 2 that xTimes(a) produces.
+        a = xTimes(a); //It probably would be faster to inline/macro xTimes
+        b >>= 1;
+    }
+    return out;
+}
+
+// Mix the columns for Cipher
+void mixColumns(byte * b) {
+    byte tmp[4];
+    for (unsigned char i = 0; i < 4; i++) {
+        tmp[0] = b[4*i];
+        tmp[1] = b[4*i+1];
+        tmp[2] = b[4*i+2];
+        tmp[3] = b[4*i+3];
+        b[4*i] =   gf8Multiply(0x2, tmp[0]) ^ gf8Multiply(0x3, tmp[1]) ^ tmp[2]                   ^ tmp[3];
+        b[4*i+1] =                   tmp[0] ^ gf8Multiply(0x2, tmp[1]) ^ gf8Multiply(0x3, tmp[2]) ^ tmp[3];
+        b[4*i+2] =                   tmp[0] ^                   tmp[1] ^ gf8Multiply(0x2, tmp[2]) ^ gf8Multiply(0x3, tmp[3]);
+        b[4*i+3] = gf8Multiply(0x3, tmp[0]) ^                   tmp[1] ^                   tmp[2] ^ gf8Multiply(0x2, tmp[3]);
+    }
+}
+// Inverse mix columns for InvCipher
+void invMixColumns(byte * b) {
+    byte tmp[4];
+    for (unsigned char i = 0; i < 4; i++) {
+        tmp[0] = b[4*i];
+        tmp[1] = b[4*i+1];
+        tmp[2] = b[4*i+2];
+        tmp[3] = b[4*i+3];
+        b[4*i] =   gf8Multiply(0xe, tmp[0]) ^ gf8Multiply(0xb, tmp[1]) ^ gf8Multiply(0xd, tmp[2]) ^ gf8Multiply(0x9, tmp[3]);
+        b[4*i+1] = gf8Multiply(0x9, tmp[0]) ^ gf8Multiply(0xe, tmp[1]) ^ gf8Multiply(0xb, tmp[2]) ^ gf8Multiply(0xd, tmp[3]);
+        b[4*i+2] = gf8Multiply(0xd, tmp[0]) ^ gf8Multiply(0x9, tmp[1]) ^ gf8Multiply(0xe, tmp[2]) ^ gf8Multiply(0xb, tmp[3]);
+        b[4*i+3] = gf8Multiply(0xb, tmp[0]) ^ gf8Multiply(0xd, tmp[1]) ^ gf8Multiply(0x9, tmp[2]) ^ gf8Multiply(0xe, tmp[3]);
+    }
+}
+
+// state - 128-bit 'plaintext' to encrypt       roundKeys - the expanded AES-128 key
 void cipher(byte * roundKeys, byte * state) {
-    // TODO: Please for the love of god do not run keyExpansion every time
-    unsigned char round = 0;
+    size_t round = 0;
 
     // Initial add round key
     addRoundKey(roundKeys, state);
 
-    // Encryption
+    // Start encryption with 9 repeated rounds
     for (round = 1; round != NR; round++) {
         subBytes(state);
         shiftRows(state);
@@ -310,14 +307,14 @@ void cipher(byte * roundKeys, byte * state) {
          #endif
     }
 
-    // Final round without mixColumns
+    // Final round 10 without mixColumns
     subBytes(state);
     shiftRows(state);
     addRoundKey(&roundKeys[EXPANDED_KEY_BYTE_COUNT-16], state);
 }
-
+// Similar to cipher but with a reverse order and inverse functions
 void invCipher(byte * roundKeys, byte * state) {
-    unsigned char round = NR;
+    size_t round = NR;
 
     // Initial add round key
     addRoundKey(&roundKeys[NK*4*NR], state);
@@ -329,6 +326,7 @@ void invCipher(byte * roundKeys, byte * state) {
 
     round = NR - 1;
 
+    // 9 repeated rounds for decryption
     for (; round > 0; round--) {
         invSubBytes(state);
         invShiftRows(state);
