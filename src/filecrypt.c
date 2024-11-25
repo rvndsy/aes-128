@@ -68,7 +68,8 @@ void freeFileCtx(filecrypt_ctx * fileCtx) {
     //fprintf(stdout, "freeFileCtx: Freeing filecCtx...\n");
     free(fileCtx);
 }
-// Add padding in the final file block
+// Add padding in the final file block. Padding is PKCS7 that fills the final state with bytes equal to the count of missing bytes.
+// Ex: DD DD DD DD DD DD DD DD DD DD DD DD 04 04 04 04
 void addPadding(filecrypt_ctx * fileCtx, byte *buffer) {
     byte padSize = fileCtx->cipherCtx->stateSize - bufferDataEnd % fileCtx->cipherCtx->stateSize;
     for (size_t i = 0; i < padSize; i++) {
