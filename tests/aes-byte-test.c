@@ -59,7 +59,6 @@ const byte CBC128Ciphertext[TEXT_SIZE] = {
     0x09, 0x12, 0x0e, 0xca, 0x30, 0x75, 0x86, 0xe1, 0xa7};
 
 static float startTime, endTime;
-static float testMode;
 static byte state[TEXT_SIZE+16];
 static cipher_ctx * aes;
 

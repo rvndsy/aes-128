@@ -37,7 +37,6 @@ const char * plainTXTSample = "./samples/file.md";
 //const char * plainIMGSample = "./samples/lorem-picsum-200.jpg";
 
 static float startTime, endTime;
-static float testMode;
 
 void testEncryptDecryptPDF128ECB() {
     printf("AES-128 ECB ENCRYPT PDF TEST...\n");
@@ -137,7 +136,6 @@ void testEncryptDecryptPDF128CBC() {
 }
 
 void runTest(void (*testFuncPtr)()) {
-    int areFilesEqual;
     testFuncPtr();
     printf("...TEST COMPLETE, CHECK FILES MANUALLY PLEASE!\n\n");
 }
