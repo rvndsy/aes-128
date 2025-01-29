@@ -18,3 +18,7 @@ gui/build/*
 
 src/aes.o
 src/utils.o
+
+# For development
+compile_commands.json
+.cache/*
