@@ -4,6 +4,8 @@
 #include <QMainWindow>
 #include <QFileDialog>
 #include <QTextEdit>
+#include <thread>
+#include <vector>
 
 extern "C" {
     #include "../include/definitions.h"
@@ -25,6 +27,7 @@ private slots:
     void onEncryptButtonClicked();
     void onDecryptButtonClicked();
     void onSelectFileButtonClicked();
+    void doFileEncryption();
     void freeContexts();
     bool initializeContexts();
     unsigned char * getInputIV();
@@ -34,6 +37,9 @@ private:
     void consoleLog(const QString &message);
     cipher_ctx *aes = nullptr;      // MainWindow context
     filecrypt_ctx *fctx = nullptr;  // File ECB/CBC context
+    std::vector<std::thread::id> runningThreadIDs;
 };
+
+Q_DECLARE_METATYPE(QTextCursor);
 
 #endif // MAINWINDOW_H

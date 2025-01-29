@@ -3,6 +3,10 @@
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QFile>
+#include <iostream>
+#include <ostream>
+#include <qobject.h>
+#include <thread>
 
 extern "C" {
     #include "../include/aes.h"
@@ -15,6 +19,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     connect(ui->decryptButton, &QPushButton::clicked, this, &MainWindow::onDecryptButtonClicked);
     connect(ui->fileSelectorButton, &QPushButton::clicked, this, &MainWindow::onSelectFileButtonClicked);
     connect(ui->encryptButton, &QPushButton::clicked, this, &MainWindow::onEncryptButtonClicked);
+    // Need for threads
+    qRegisterMetaType<QTextCursor>();
 }
 // For output to the bottom "Console Log" field
 void MainWindow::consoleLog(const QString &msg) {
@@ -122,10 +128,18 @@ bool MainWindow::initializeContexts() {
     }
     return true;
 }
+
 // onEncryptButtonClicked and onDecryptButtonClicked are very similar
 void MainWindow::onEncryptButtonClicked() {
-    // Create or update the contexts firstly
+    std::cout << "Starting thread..." << std::endl;
     if (!initializeContexts()) return;
+    std::thread t1(&MainWindow::doFileEncryption, this);
+    t1.join();
+    std::cout << "Ending thread..." << std::endl;
+}
+
+void MainWindow::doFileEncryption() {
+    // Create or update the contexts firstly
     if (fctx == nullptr || aes == nullptr) {
         consoleLog("onEncryptButtonClicked: Context allocation failed");
         return;
@@ -151,6 +165,7 @@ void MainWindow::onEncryptButtonClicked() {
         fclose(freadFile);
         return;
     }
+    std::cout << "Beginning encryption..." << std::endl;
     // If contexts and file pointers are set up fine, run encryptFile
     encryptFile(fctx, freadFile, fwriteFile);
 
