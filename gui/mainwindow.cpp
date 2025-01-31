@@ -134,7 +134,6 @@ void MainWindow::onEncryptButtonClicked() {
     std::cout << "Starting thread..." << std::endl;
     if (!initializeContexts()) return;
     std::thread t1(&MainWindow::doFileEncryption, this);
-    t1.join();
     std::cout << "Ending thread..." << std::endl;
 }
 

@@ -17,5 +17,6 @@ void keyExpansion(const byte *, byte *);
 
 #define NB 4            //Number of 32-bit columns for the state/block/text - always 4
 #define NB_BYTES 16     //Plaintext/Ciphertext/State size in bytes - always 32*NB/8
+#define AES_STATE_SIZE NB_BYTES
 
 #endif // AES_H_

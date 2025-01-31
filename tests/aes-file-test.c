@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h> //for memcpy...
@@ -16,6 +17,9 @@
 #define TEXT_SIZE 64
 #define KEY_SIZE 16
 #define IV_SIZE 16
+
+#define PDF 0x1
+#define TXT 0x2
 
 // Key is the same for ECB, CBC - 2b7e151628aed2a6abf7158809cf4f3c
 const byte aesCore128Key[KEY_SIZE] = {
@@ -38,16 +42,65 @@ const char * plainTXTSample = "./samples/file.md";
 
 static float startTime, endTime;
 
-void testEncryptDecryptPDF128ECB() {
-    printf("AES-128 ECB ENCRYPT PDF TEST...\n");
+char * fileNameMaker(uint8_t mode, uint16_t version, uint8_t isEncrypt, uint8_t fileType) {
+    char * fileName = malloc(sizeof(char) * 32);
+    memset(fileName, '\0', 32);
+    switch (mode) {
+        case ECB:
+            strcat(fileName, "ecb-");
+            break;
+        case CBC:
+            strcat(fileName, "cbc-");
+            break;
+    }
+    switch (version) {
+        case 128:
+            strcat(fileName, "128-");
+            break;
+        case 196:
+            strcat(fileName, "196-");
+            break;
+        case 256:
+            strcat(fileName, "256-");
+            break;
+    }
+    switch (isEncrypt) {
+        case ENCRYPT:
+            strcat(fileName, "encrypted");
+            break;
+        case DECRYPT:
+            strcat(fileName, "decrypted");
+            break;
+    }
+    switch (fileType) {
+        case PDF:
+            strcat(fileName, ".pdf");
+            break;
+        case TXT:
+            strcat(fileName, ".md");
+            break;
+    }
+    return fileName;
+}
+
+void testFileEncryptDecrypt(uint8_t mode, uint16_t version, uint8_t fileType, size_t fileReadBufferSize) {
+    if (mode == ECB) {
+        printf("AES-128 ECB ENCRYPT PDF TEST...\n");
+    } else if (mode == CBC) {
+        printf("AES-128 CBC ENCRYPT PDF TEST...\n");
+    }
+
+    char * fileNameEncrypt = fileNameMaker(mode, version, ENCRYPT, fileType);
+    char * fileNameDecrypt = fileNameMaker(mode, version, DECRYPT, fileType);
 
     FILE * fptrReadPlain, * fptrWriteCipher, * fptrWritePlain;
-    fptrReadPlain = fopen(plainPDFSample, "rb");
-    fptrWriteCipher = fopen("ecb-128-encrypted.pdf", "wb+");
-    fptrWritePlain = fopen("ecb-128-decrypted.pdf", "wb+");
-    //fptrReadPlain = fopen(plainTXTSample, "rb");
-    //fptrWriteCipher = fopen("ecb-128-encrypted.md", "wb+");
-    //fptrWritePlain = fopen("ecb-128-decrypted.md", "wb+");
+    if (fileType == PDF) {
+        fptrReadPlain = fopen(plainPDFSample, "rb");
+    } else if (fileType == TXT) {
+        fptrReadPlain = fopen(plainTXTSample, "rb");
+    }
+    fptrWriteCipher = fopen(fileNameEncrypt, "wb+");
+    fptrWritePlain = fopen(fileNameDecrypt, "wb+");
 
     if (fptrReadPlain == NULL) fprintf(stderr, "Sample file %s does not exist", plainTXTSample);
     if (fptrWritePlain == NULL) fprintf(stderr, "Cannot open plaintext file to write");
@@ -57,17 +110,18 @@ void testEncryptDecryptPDF128ECB() {
         startTime = (float)clock()/CLOCKS_PER_SEC;
     #endif
 
-    cipher_ctx * aes = createAESctx(aesCore128Key, 128);
-    filecrypt_ctx * fctx = createFileCtx(aes, ECB, 512);
+    cipher_ctx * aes = createAESctx(aesCore128Key, version);
+    filecrypt_ctx * fctx = createFileCtx(aes, mode, fileReadBufferSize);
+    if (mode == CBC) {
+        addFileCtxIV(fctx, iv, AES_STATE_SIZE);
+    }
 
     encryptFile(fctx, fptrReadPlain, fptrWriteCipher);
 
     #if BENCHMARK == 1
         endTime = (float)clock()/CLOCKS_PER_SEC;
         printf("Encrypt time: %fs\n", endTime - startTime);
-    #endif
 
-    #if BENCHMARK == 1
         startTime = (float)clock()/CLOCKS_PER_SEC;
     #endif
 
@@ -83,66 +137,16 @@ void testEncryptDecryptPDF128ECB() {
     fclose(fptrReadPlain);
     fclose(fptrWritePlain);
     fclose(fptrWriteCipher);
-
-    //return areFilesEqual;
 }
 
-void testEncryptDecryptPDF128CBC() {
-    printf("AES-128 CBC ENCRYPT PDF TEST...\n");
-
-    FILE * fptrReadPlain, * fptrWriteCipher, * fptrWritePlain;
-    fptrReadPlain = fopen(plainPDFSample, "rb");
-    fptrWriteCipher = fopen("cbc-128-encrypted.pdf", "wb+");
-    fptrWritePlain = fopen("cbc-128-decrypted.pdf", "wb+");
-    //fptrReadPlain = fopen(plainTXTSample, "rb");
-    //fptrWriteCipher = fopen("cbc-128-encrypted.md", "wb+");
-    //fptrWritePlain = fopen("cbc-128-decrypted.md", "wb+");
-
-    if (fptrReadPlain == NULL) fprintf(stderr, "Sample file %s does not exist", plainTXTSample);
-    if (fptrWritePlain == NULL) fprintf(stderr, "Cannot open plaintext file to write");
-    if (fptrWriteCipher == NULL) fprintf(stderr, "Cannot open ciphertext file to write");
-
-    #if BENCHMARK == 1
-        startTime = (float)clock()/CLOCKS_PER_SEC;
-    #endif
-
-    cipher_ctx * aes = createAESctx(aesCore128Key, 128);
-    filecrypt_ctx * fctx = createFileCtx(aes, CBC, 512);
-
-    addFileCtxIV(fctx, iv, 16);
-    encryptFile(fctx, fptrReadPlain, fptrWriteCipher);
-
-    #if BENCHMARK == 1
-        endTime = (float)clock()/CLOCKS_PER_SEC;
-        printf("Encrypt time: %fs\n", endTime - startTime);
-    #endif
-
-    #if BENCHMARK == 1
-        startTime = (float)clock()/CLOCKS_PER_SEC;
-    #endif
-
-    decryptFile(fctx, fptrWriteCipher, fptrWritePlain);
-
-    #if BENCHMARK == 1
-        endTime = (float)clock()/CLOCKS_PER_SEC;
-        printf("Decrypt time: %fs\n", endTime - startTime);
-    #endif
-
-    freeAESctx(aes);
-    freeFileCtx(fctx);
-    fclose(fptrReadPlain);
-    fclose(fptrWritePlain);
-    fclose(fptrWriteCipher);
-}
-
-void runTest(void (*testFuncPtr)()) {
-    testFuncPtr();
+void runTest(void (*testFuncPtr)(uint8_t, uint16_t, uint8_t, size_t), uint8_t mode, uint16_t version, uint8_t fileType, size_t fileReadBufferSize) {
+    testFuncPtr(mode, version, fileType, fileReadBufferSize);
     printf("...TEST COMPLETE, CHECK FILES MANUALLY PLEASE!\n\n");
 }
 
 int main(int argc, char ** argv) {
-    runTest(&testEncryptDecryptPDF128ECB);
-    runTest(&testEncryptDecryptPDF128CBC);
+    runTest(&testFileEncryptDecrypt, ECB, 128, PDF, 512);
+    runTest(&testFileEncryptDecrypt, CBC, 128, PDF, 512);
 
     return 0;
 }
