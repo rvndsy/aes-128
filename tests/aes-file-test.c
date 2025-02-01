@@ -6,18 +6,19 @@
 #include "../include/filecrypt.h"
 #include "../include/aes.h"
 #include "../include/definitions.h"
+#include "utils.h"
 
 #define VERBOSE 1
 #define BENCHMARK 1
 
-#define MAX_THREAD_COUNT 4
-#define THREAD_COUNT 1
+#define MAX_THREAD_COUNT 8
+#define THREAD_COUNT 8
 struct args_struct {
     filecrypt_ctx * fctx;
     FILE * readFile;
-    FILE * writeFile;
+    FILE * writeFileEncrypted;
+    FILE * writeFileDecrypted;
     size_t threadNumber;
-    uint8_t isEncrypt;
 };
 
 #if BENCHMARK == 1
@@ -41,7 +42,10 @@ const byte iv[IV_SIZE] = {
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f
 };
 
-const char * plainPDFSamplesArray[4] = {"./samples/file.pdf", "./samples/file-2.pdf", "./samples/file-3.pdf", "./samples/file-4.pdf"};
+const char * plainPDFSamplesArray[MAX_THREAD_COUNT] = {
+    "./samples/file.pdf", "./samples/file-2.pdf", "./samples/file-3.pdf", "./samples/file-4.pdf",
+    "./samples/file-5.pdf", "./samples/file-6.pdf", "./samples/file-7.pdf", "./samples/file-8.pdf"
+};
 const char * plainPDFSample = "./samples/file.pdf";
 const char * cipherPDFSample = "./samples/cfile.pdf";
 
@@ -161,26 +165,32 @@ void * runThreadEncryptDecrypt(void * pargs) {
         startTime = (float)clock()/CLOCKS_PER_SEC;
     #endif
 
-    if (args->isEncrypt == ENCRYPT) {
-        encryptFile(args->fctx, args->readFile, args->writeFile);
-    } else {
-        decryptFile(args->fctx, args->readFile, args->writeFile);
-    }
+    encryptFile(args->fctx, args->readFile, args->writeFileEncrypted);
 
     #if BENCHMARK == 1
         endTime = (float)clock()/CLOCKS_PER_SEC;
         printf("Thread  %ld  Encrypt time: %fs\n", args->threadNumber, endTime - startTime);
+
+        startTime = (float)clock()/CLOCKS_PER_SEC;
     #endif
 
-    freeAESctx(pargs);
+    decryptFile(args->fctx, args->writeFileEncrypted, args->writeFileDecrypted);
+
+    #if BENCHMARK == 1
+        endTime = (float)clock()/CLOCKS_PER_SEC;
+        printf("Thread  %ld  Decrypt time: %fs\n", args->threadNumber, endTime - startTime);
+    #endif
+
     freeAESctx(args->fctx->cipherCtx);
     freeFileCtx(args->fctx);
-    fclose(args->writeFile);
+    fclose(args->writeFileEncrypted);
+    fclose(args->writeFileDecrypted);
     fclose(args->readFile);
+    free(pargs);
     return NULL;
 }
 
-filecrypt_ctx * generateFctx(uint8_t mode, uint16_t version, uint8_t isEncrypt, uint8_t fileType, size_t appendValue, const byte * iv, size_t fileReadBufferSize) {
+filecrypt_ctx * generateFctx(uint8_t mode, uint16_t version, uint8_t fileType, size_t appendValue, const byte * iv, size_t fileReadBufferSize) {
         cipher_ctx * aes = createAESctx(aesCore128Key, version);
         filecrypt_ctx * fctx = createFileCtx(aes, mode, fileReadBufferSize);
 
@@ -201,13 +211,13 @@ FILE * generateWriteFilePtr(uint8_t mode, uint16_t version, uint8_t isEncrypt, u
     return fptrWrite;
 }
 
-struct args_struct * generateThreadArgs(filecrypt_ctx * fctx, FILE * fptrRead, FILE * fptrWrite, size_t threadNumber, uint8_t isEncrypt) {
+struct args_struct * generateThreadArgs(filecrypt_ctx * fctx, FILE * fptrRead, FILE * fptrWriteEncrypted, FILE * fptrWriteDecrypted, size_t threadNumber) {
     struct args_struct * pargs = malloc(sizeof(struct args_struct));
     pargs->fctx = fctx;
-    pargs->writeFile = fptrWrite;
+    pargs->writeFileEncrypted = fptrWriteEncrypted;
+    pargs->writeFileDecrypted = fptrWriteDecrypted;
     pargs->readFile = fptrRead;
     pargs->threadNumber = threadNumber;
-    pargs->isEncrypt = isEncrypt;
     return pargs;
 }
 
@@ -223,13 +233,14 @@ void testFileEncryptDecryptThreaded(uint8_t mode, uint16_t version, uint8_t file
     for (size_t threadNumber = 0; threadNumber < THREAD_COUNT; threadNumber++) {
         fprintf(stdout, "Preparing for thread #%ld...\n", threadNumber);
 
-        FILE * fptrWrite = generateWriteFilePtr(mode, version, ENCRYPT, fileType, threadNumber);
+        FILE * fptrWriteEncrypted = generateWriteFilePtr(mode, version, ENCRYPT, fileType, threadNumber);
+        FILE * fptrWriteDecrypted = generateWriteFilePtr(mode, version, DECRYPT, fileType, threadNumber);
 
         FILE * fptrRead = fopen(plainPDFSamplesArray[threadNumber], "rb");
         if (fptrRead == NULL) fprintf(stderr, "Sample file %s does not exist\n", plainPDFSamplesArray[threadNumber]);
 
-        filecrypt_ctx * fctx = generateFctx(mode, version, ENCRYPT, fileType, threadNumber, iv, fileReadBufferSize);
-        struct args_struct * pargs = generateThreadArgs(fctx, fptrRead, fptrWrite, threadNumber, ENCRYPT);
+        filecrypt_ctx * fctx = generateFctx(mode, version, fileType, threadNumber, iv, fileReadBufferSize);
+        struct args_struct * pargs = generateThreadArgs(fctx, fptrRead, fptrWriteEncrypted, fptrWriteDecrypted, threadNumber);
 
         fprintf(stdout, "Starting thread #%ld with ID ", threadNumber);
 
@@ -241,7 +252,39 @@ void testFileEncryptDecryptThreaded(uint8_t mode, uint16_t version, uint8_t file
     for (size_t threadNumber = 0; threadNumber < THREAD_COUNT; threadNumber++) {
         pthread_join(threads[threadNumber], NULL);
     }
-    fprintf(stdout, "All threads are done!\n");
+    fprintf(stdout, "All threads are done!\n\n");
+    fprintf(stdout, "Comparing written files...\n");
+
+    //
+    // Checking files...
+    // 
+    char * fileNameWrite;
+    FILE * fptrWrittenPlain;
+    FILE * fptrWrittenCipher;
+    FILE * fptrSamplePlain = fopen(plainPDFSample, "rb");
+    FILE * fptrSampleCipher = fopen(cipherPDFSample, "rb");
+
+    // Decrypted, currently all sample plaintext and ciphertext files are identical
+    fprintf(stdout, "Comparing plaintext/decrypted files\n");
+    for (size_t threadNumber = 0; threadNumber < THREAD_COUNT; threadNumber++) {
+        fileNameWrite = fileNameMaker(mode, version, DECRYPT, fileType, threadNumber);
+        fprintf(stdout, "%s: ", fileNameWrite);
+        fptrWrittenPlain = fopen(fileNameWrite, "rb");
+        compareFiles(fptrWrittenPlain, fptrSamplePlain);
+        fclose(fptrWrittenPlain);
+    }
+    fclose(fptrSamplePlain);
+    // Encrypted
+
+    fprintf(stdout, "Comparing ciphertext/encrypted files\n");
+    for (size_t threadNumber = 0; threadNumber < THREAD_COUNT; threadNumber++) {
+        fileNameWrite = fileNameMaker(mode, version, ENCRYPT, fileType, threadNumber);
+        fprintf(stdout, "%s: ", fileNameWrite);
+        fptrWrittenCipher = fopen(fileNameWrite, "rb");
+        compareFiles(fptrWrittenCipher, fptrSampleCipher);
+        fclose(fptrWrittenCipher);
+    }
+    fclose(fptrSampleCipher);
     return;
 }
 

@@ -247,9 +247,6 @@ void fileCipher(filecrypt_ctx *fileCtx, FILE *readFile, FILE *writeFile, unsigne
 // In my opinion it is simpler to call encrypt or decrypt than to pass ENCRYPT or DECRYPT to fileCipher.
 // Alternate solution could be set the operation mode function and allocations in here.
 void encryptFile(filecrypt_ctx *fileCtx, FILE *readFile, FILE *writeFile) {
-    if (readFile == NULL) {
-        fprintf(stdout, "\n\n\tWHATTHEFUCK\n\n");
-    }
     fileCipher(fileCtx, readFile, writeFile, ENCRYPT);
 }
 
