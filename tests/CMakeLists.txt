@@ -10,3 +10,8 @@ target_link_libraries(aes-byte-test PRIVATE aes filecrypt utils)
 
 add_executable(aes-file-test aes-file-test.c)
 target_link_libraries(aes-file-test PRIVATE aes filecrypt)
+
+# Need multiple file.pdf(s) for testing threading
+file(COPY_FILE ${CMAKE_SOURCE_DIR}/tests/samples/file.pdf ${CMAKE_BINARY_DIR}/tests/samples/file-2.pdf)
+file(COPY_FILE ${CMAKE_SOURCE_DIR}/tests/samples/file.pdf ${CMAKE_BINARY_DIR}/tests/samples/file-3.pdf)
+file(COPY_FILE ${CMAKE_SOURCE_DIR}/tests/samples/file.pdf ${CMAKE_BINARY_DIR}/tests/samples/file-4.pdf)

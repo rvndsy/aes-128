@@ -3,7 +3,7 @@
 cd ./build/ &&
 cmake .. &&
 make &&
-clear &&
+#clear &&
 cd ./tests/ &&
 ./aes-byte-test &&
 ./aes-file-test

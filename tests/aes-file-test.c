@@ -1,3 +1,4 @@
+#include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -5,10 +6,19 @@
 #include "../include/filecrypt.h"
 #include "../include/aes.h"
 #include "../include/definitions.h"
-#include "../include/utils.h"
 
 #define VERBOSE 1
 #define BENCHMARK 1
+
+#define MAX_THREAD_COUNT 4
+#define THREAD_COUNT 1
+struct args_struct {
+    filecrypt_ctx * fctx;
+    FILE * readFile;
+    FILE * writeFile;
+    size_t threadNumber;
+    uint8_t isEncrypt;
+};
 
 #if BENCHMARK == 1
 #include <time.h>
@@ -26,12 +36,12 @@ const byte aesCore128Key[KEY_SIZE] = {
     0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6, 0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c
 };
 
-
 // iV - 000102030405060708090a0b0c0d0e0f
 const byte iv[IV_SIZE] = {
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f
 };
 
+const char * plainPDFSamplesArray[4] = {"./samples/file.pdf", "./samples/file-2.pdf", "./samples/file-3.pdf", "./samples/file-4.pdf"};
 const char * plainPDFSample = "./samples/file.pdf";
 const char * cipherPDFSample = "./samples/cfile.pdf";
 
@@ -42,7 +52,7 @@ const char * plainTXTSample = "./samples/file.md";
 
 static float startTime, endTime;
 
-char * fileNameMaker(uint8_t mode, uint16_t version, uint8_t isEncrypt, uint8_t fileType) {
+char * fileNameMaker(uint8_t mode, uint16_t version, uint8_t isEncrypt, uint8_t fileType, long appendValue) {
     char * fileName = malloc(sizeof(char) * 32);
     memset(fileName, '\0', 32);
     switch (mode) {
@@ -72,6 +82,11 @@ char * fileNameMaker(uint8_t mode, uint16_t version, uint8_t isEncrypt, uint8_t 
             strcat(fileName, "decrypted");
             break;
     }
+    if (appendValue >= 0) {
+        char istr[sizeof(appendValue)];
+        sprintf(istr, "-%ld", appendValue);
+        strcat(fileName, istr);
+    }
     switch (fileType) {
         case PDF:
             strcat(fileName, ".pdf");
@@ -90,8 +105,8 @@ void testFileEncryptDecrypt(uint8_t mode, uint16_t version, uint8_t fileType, si
         printf("AES-128 CBC ENCRYPT PDF TEST...\n");
     }
 
-    char * fileNameEncrypt = fileNameMaker(mode, version, ENCRYPT, fileType);
-    char * fileNameDecrypt = fileNameMaker(mode, version, DECRYPT, fileType);
+    char * fileNameEncrypt = fileNameMaker(mode, version, ENCRYPT, fileType, -1);
+    char * fileNameDecrypt = fileNameMaker(mode, version, DECRYPT, fileType, -1);
 
     FILE * fptrReadPlain, * fptrWriteCipher, * fptrWritePlain;
     if (fileType == PDF) {
@@ -139,14 +154,112 @@ void testFileEncryptDecrypt(uint8_t mode, uint16_t version, uint8_t fileType, si
     fclose(fptrWriteCipher);
 }
 
+void * runThreadEncryptDecrypt(void * pargs) {
+    struct args_struct * args = (struct args_struct*)pargs;
+
+    #if BENCHMARK == 1
+        startTime = (float)clock()/CLOCKS_PER_SEC;
+    #endif
+
+    if (args->isEncrypt == ENCRYPT) {
+        encryptFile(args->fctx, args->readFile, args->writeFile);
+    } else {
+        decryptFile(args->fctx, args->readFile, args->writeFile);
+    }
+
+    #if BENCHMARK == 1
+        endTime = (float)clock()/CLOCKS_PER_SEC;
+        printf("Thread  %ld  Encrypt time: %fs\n", args->threadNumber, endTime - startTime);
+    #endif
+
+    freeAESctx(pargs);
+    freeAESctx(args->fctx->cipherCtx);
+    freeFileCtx(args->fctx);
+    fclose(args->writeFile);
+    fclose(args->readFile);
+    return NULL;
+}
+
+filecrypt_ctx * generateFctx(uint8_t mode, uint16_t version, uint8_t isEncrypt, uint8_t fileType, size_t appendValue, const byte * iv, size_t fileReadBufferSize) {
+        cipher_ctx * aes = createAESctx(aesCore128Key, version);
+        filecrypt_ctx * fctx = createFileCtx(aes, mode, fileReadBufferSize);
+
+        if (mode == CBC) {
+            addFileCtxIV(fctx, iv, AES_STATE_SIZE);
+        }
+        return fctx;
+}
+
+FILE * generateWriteFilePtr(uint8_t mode, uint16_t version, uint8_t isEncrypt, uint8_t fileType, size_t fileNumber) {
+    char * fileNameWrite = fileNameMaker(mode, version, isEncrypt, fileType, fileNumber);
+    fprintf(stderr, "Opened file %s for writing\n", fileNameWrite);
+    FILE * fptrWrite;
+
+    fptrWrite = fopen(fileNameWrite, "wb+");
+    if (fptrWrite == NULL) fprintf(stderr, "Cannot open file to write %s\n", fileNameWrite);
+
+    return fptrWrite;
+}
+
+struct args_struct * generateThreadArgs(filecrypt_ctx * fctx, FILE * fptrRead, FILE * fptrWrite, size_t threadNumber, uint8_t isEncrypt) {
+    struct args_struct * pargs = malloc(sizeof(struct args_struct));
+    pargs->fctx = fctx;
+    pargs->writeFile = fptrWrite;
+    pargs->readFile = fptrRead;
+    pargs->threadNumber = threadNumber;
+    pargs->isEncrypt = isEncrypt;
+    return pargs;
+}
+
+void testFileEncryptDecryptThreaded(uint8_t mode, uint16_t version, uint8_t fileType, size_t fileReadBufferSize) {
+    if (mode == ECB) {
+        printf("THREADED AES-128 ECB ENCRYPT PDF TEST...\n");
+    } else if (mode == CBC) {
+        printf("THREADED AES-128 CBC ENCRYPT PDF TEST...\n");
+    }
+
+    pthread_t threads[THREAD_COUNT];
+    int threadIDs[THREAD_COUNT];
+    for (size_t threadNumber = 0; threadNumber < THREAD_COUNT; threadNumber++) {
+        fprintf(stdout, "Preparing for thread #%ld...\n", threadNumber);
+
+        FILE * fptrWrite = generateWriteFilePtr(mode, version, ENCRYPT, fileType, threadNumber);
+
+        FILE * fptrRead = fopen(plainPDFSamplesArray[threadNumber], "rb");
+        if (fptrRead == NULL) fprintf(stderr, "Sample file %s does not exist\n", plainPDFSamplesArray[threadNumber]);
+
+        filecrypt_ctx * fctx = generateFctx(mode, version, ENCRYPT, fileType, threadNumber, iv, fileReadBufferSize);
+        struct args_struct * pargs = generateThreadArgs(fctx, fptrRead, fptrWrite, threadNumber, ENCRYPT);
+
+        fprintf(stdout, "Starting thread #%ld with ID ", threadNumber);
+
+        threadIDs[threadNumber] = pthread_create(&threads[threadNumber], NULL, &runThreadEncryptDecrypt, (void*)pargs); 
+
+        fprintf(stdout, "%i...\n", threadIDs[threadNumber]);
+    }
+    fprintf(stdout, "\nWaiting for all threads to finish...\n");
+    for (size_t threadNumber = 0; threadNumber < THREAD_COUNT; threadNumber++) {
+        pthread_join(threads[threadNumber], NULL);
+    }
+    fprintf(stdout, "All threads are done!\n");
+    return;
+}
+
 void runTest(void (*testFuncPtr)(uint8_t, uint16_t, uint8_t, size_t), uint8_t mode, uint16_t version, uint8_t fileType, size_t fileReadBufferSize) {
     testFuncPtr(mode, version, fileType, fileReadBufferSize);
     printf("...TEST COMPLETE, CHECK FILES MANUALLY PLEASE!\n\n");
 }
 
 int main(int argc, char ** argv) {
-    runTest(&testFileEncryptDecrypt, ECB, 128, PDF, 512);
-    runTest(&testFileEncryptDecrypt, CBC, 128, PDF, 512);
+    if (THREAD_COUNT > MAX_THREAD_COUNT || THREAD_COUNT < 1) {
+        fprintf(stderr, "THREAD_COUNT must be greater than or equal to 1 AND lower than or equal to MAX_THREAD_COUNT\n");
+        exit(1);
+    }
+
+    //runTest(&testFileEncryptDecrypt, ECB, 128, PDF, 512);
+    //runTest(&testFileEncryptDecrypt, CBC, 128, PDF, 512);
+
+    runTest(&testFileEncryptDecryptThreaded, ECB, 128, PDF, 512);
 
     return 0;
 }

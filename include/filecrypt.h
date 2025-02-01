@@ -31,6 +31,8 @@ void decryptFile(filecrypt_ctx *, FILE *, FILE *);
 
 void encryptBytes(filecrypt_ctx *, unsigned long, byte *);
 void decryptBytes(filecrypt_ctx *, unsigned long, byte *);
+/* Returns file size in bytes. FILE* must be opened in binary mode */
+unsigned long readFileSize(FILE *);
 
 #define ECB 0 // 0x00000000
 #define CBC 1 // 0x0000000C
