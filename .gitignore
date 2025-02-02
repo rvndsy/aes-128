@@ -3,6 +3,7 @@ a.out
 aes
 main
 out
+gui
 
 # Unneeded stuff
 tmp/*

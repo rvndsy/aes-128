@@ -1,5 +1,5 @@
+#ifndef _FILECRYPT_H_
 #define _FILECRYPT_H_
-#ifdef _FILECRYPT_H_
 
 #include "definitions.h"
 #include <stdio.h>

@@ -74,7 +74,11 @@ int compareByteArrays(const byte * a, const byte * b, int size, int verbose) {
 
     return mismatchCount;
 }
-
+/* Returns 0 if files are identical
+ *
+ * Returns a non-zero positive integer if files are not identical 
+ *
+ * Does not rewind file pointers!*/
 int compareFiles(FILE *fptr1, FILE *fptr2) {
     unsigned long pos;
     int c1, c2;
@@ -85,18 +89,16 @@ int compareFiles(FILE *fptr1, FILE *fptr2) {
             break;
     }
     if (c1 == c2) {
-        printf("files are identical and have %lu bytes\n", pos);
+        // printf("files are identical and have %lu bytes\n", pos);
         return 0;  // files are identical
-    } else
-    if (c1 == EOF) {
-        printf("file1 is included in file2, the first %lu bytes are identical\n", pos);
+    } else if (c1 == EOF) {
+        // printf("file1 is included in file2, the first %lu bytes are identical\n", pos);
         return 1;
-    } else
-    if (c2 == EOF) {
-        printf("file2 is included in file1, the first %lu bytes are identical\n", pos);
+    } else if (c2 == EOF) {
+        // printf("file2 is included in file1, the first %lu bytes are identical\n", pos);
         return 2;
     } else {
-        printf("file1 and file2 differ at position %lu: 0x%02X <> 0x%02X\n", pos, c1, c2);
+        // printf("file1 and file2 differ at position %lu: 0x%02X <> 0x%02X\n", pos, c1, c2);
         return 3;
     }
 }
