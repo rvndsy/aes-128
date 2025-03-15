@@ -11,10 +11,8 @@ This is a demonstration of my implementation of AES-128 cryptographic algorithm 
 Compilation is done with the help of CMake. Create directory `build` and run the following command(s):
 
 ```
-cd ./build/ &&\
-cmake .. &&\
-make &&\
-./gui/gui
+cmake -S . -B build &&\
+cmake --build build
 ```
 
 ### Windows
