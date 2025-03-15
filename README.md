@@ -44,3 +44,10 @@ DISCLAIMER: Please for the love of god do not encrypt your own personal files us
 ## Notes on Qt development on Linux using Neovim with Clang as the LSP
 
 Check `./DEVGUIDE.md`.
+
+## GUI example screenshots
+
+![Encryption](./gui-encrypt-example.png)
+
+![Decryption](./gui-decrypt-example.png)
+
